@@ -158,10 +158,43 @@ export default function ExpenseForm({
     color: "var(--text-primary)",
   };
 
+  // Custom categories state
+  const [customCategories, setCustomCategories] = useState<string[]>(() => {
+    if (typeof window !== "undefined") {
+      try {
+        const saved = localStorage.getItem("spendpulse_custom_categories");
+        return saved ? JSON.parse(saved) : [];
+      } catch {
+        return [];
+      }
+    }
+    return [];
+  });
+  const [isAddingCategory, setIsAddingCategory] = useState(false);
+  const [newCategoryName, setNewCategoryName] = useState("");
+
   const isIncome = txType === "Income";
   const accentColor = isIncome ? "#10b981" : "#7c3aed";
-  const categories = isIncome ? INCOME_CATEGORIES : EXPENSE_CATEGORIES;
+  const baseCategories = isIncome ? INCOME_CATEGORIES : EXPENSE_CATEGORIES;
+  const categories = Array.from(new Set([...baseCategories, ...customCategories]));
   const dynamicLabel = submitLabel ?? (isIncome ? "Add Income" : "Add Expense");
+
+  const handleCreateCategory = (e?: React.FormEvent) => {
+    e?.preventDefault();
+    const trimmed = newCategoryName.trim();
+    if (!trimmed) return;
+    const formatted = trimmed.charAt(0).toUpperCase() + trimmed.slice(1);
+    if (!categories.includes(formatted)) {
+      const updated = [...customCategories, formatted];
+      setCustomCategories(updated);
+      try {
+        localStorage.setItem("spendpulse_custom_categories", JSON.stringify(updated));
+      } catch {}
+    }
+    set("category", formatted);
+    setNewCategoryName("");
+    setIsAddingCategory(false);
+  };
 
   return (
     <form onSubmit={handleSubmit} className="space-y-4">
@@ -251,29 +284,77 @@ export default function ExpenseForm({
       {/* Category + Date */}
       <div className="grid grid-cols-2 gap-3">
         <div>
-          <label className="block text-xs font-semibold mb-2 uppercase tracking-wider" style={{ color: "var(--text-secondary)" }}>
-            <Tag size={12} className="inline mr-1" />Category
-          </label>
-          <select
-            id="expense-category-select"
-            value={form.category}
-            onChange={(e) => set("category", e.target.value)}
-            className={inputClass}
-            style={{ ...inputStyle, cursor: "pointer" }}
-          >
-            {categories.map((c) => (
-              <option
-                key={c}
-                value={c}
-                style={{
-                  backgroundColor: "var(--select-option-bg)",
-                  color: "var(--select-option-color)",
+          <div className="flex items-center justify-between mb-2">
+            <label className="block text-xs font-semibold uppercase tracking-wider" style={{ color: "var(--text-secondary)" }}>
+              <Tag size={12} className="inline mr-1" />Category
+            </label>
+            <button
+              type="button"
+              onClick={() => setIsAddingCategory((v) => !v)}
+              className="text-[10px] font-bold hover:underline cursor-pointer flex items-center gap-0.5"
+              style={{ color: "var(--accent-purple)" }}
+            >
+              {isAddingCategory ? "Cancel" : "+ New"}
+            </button>
+          </div>
+
+          {isAddingCategory ? (
+            <div className="flex items-center gap-1.5">
+              <input
+                type="text"
+                autoFocus
+                placeholder="Category name"
+                value={newCategoryName}
+                onChange={(e) => setNewCategoryName(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") {
+                    e.preventDefault();
+                    handleCreateCategory();
+                  }
                 }}
+                className={inputClass}
+                style={inputStyle}
+              />
+              <button
+                type="button"
+                onClick={handleCreateCategory}
+                className="px-3 py-3 rounded-xl text-xs font-bold text-white shrink-0 shadow-md cursor-pointer hover:opacity-90"
+                style={{ background: "linear-gradient(135deg, #7c3aed, #3b82f6)" }}
               >
-                {c}
+                Add
+              </button>
+            </div>
+          ) : (
+            <select
+              id="expense-category-select"
+              value={form.category}
+              onChange={(e) => {
+                if (e.target.value === "__NEW__") {
+                  setIsAddingCategory(true);
+                } else {
+                  set("category", e.target.value);
+                }
+              }}
+              className={inputClass}
+              style={{ ...inputStyle, cursor: "pointer" }}
+            >
+              {categories.map((c) => (
+                <option
+                  key={c}
+                  value={c}
+                  style={{
+                    backgroundColor: "var(--select-option-bg)",
+                    color: "var(--select-option-color)",
+                  }}
+                >
+                  {c}
+                </option>
+              ))}
+              <option value="__NEW__" style={{ color: "#7c3aed", fontWeight: "bold" }}>
+                ✨ + Add New Category...
               </option>
-            ))}
-          </select>
+            </select>
+          )}
         </div>
         <div>
           <label className="block text-xs font-semibold mb-2 uppercase tracking-wider" style={{ color: "var(--text-secondary)" }}>

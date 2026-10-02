@@ -1,5 +1,5 @@
 "use client";
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useState, useCallback, useMemo } from "react";
 import {
   Search, Filter, Trash2, Pencil, Plus, X,
 } from "lucide-react";
@@ -36,6 +36,19 @@ export default function TransactionsPage() {
   const [showAddForm, setShowAddForm] = useState(false);
   const [editTx, setEditTx] = useState<Transaction | null>(null);
   const [deletingId, setDeletingId] = useState<string | null>(null);
+
+  // Dynamic categories including custom user categories
+  const allFilterCategories = useMemo(() => {
+    let custom: string[] = [];
+    if (typeof window !== "undefined") {
+      try {
+        custom = JSON.parse(localStorage.getItem("spendpulse_custom_categories") || "[]");
+      } catch {}
+    }
+    const fromTx = transactions.map((t) => t.category).filter(Boolean);
+    const set = new Set<string>([...CATEGORIES, ...custom, ...fromTx]);
+    return Array.from(set);
+  }, [transactions]);
 
   const fetchTransactions = useCallback(async () => {
     setLoading(true);
@@ -148,26 +161,29 @@ export default function TransactionsPage() {
 
         {/* Category chips */}
         <div className="flex items-center gap-2 flex-wrap">
-          {CATEGORIES.map((cat) => (
-            <button
-              key={cat}
-              onClick={() => setCategoryFilter(cat)}
-              className="px-3 py-1.5 rounded-lg text-xs font-semibold transition-all duration-200"
-              style={{
-                background: categoryFilter === cat
-                  ? cat === "All" ? "rgba(124,58,237,0.18)" : `${CATEGORY_COLORS[cat]}20`
-                  : "var(--input-bg)",
-                border: categoryFilter === cat
-                  ? cat === "All" ? "1px solid rgba(124,58,237,0.5)" : `1px solid ${CATEGORY_COLORS[cat]}50`
-                  : "1px solid var(--border-subtle)",
-                color: categoryFilter === cat
-                  ? cat === "All" ? "var(--accent-purple)" : CATEGORY_COLORS[cat]
-                  : "var(--text-secondary)",
-              }}
-            >
-              {cat}
-            </button>
-          ))}
+          {allFilterCategories.map((cat) => {
+            const color = CATEGORY_COLORS[cat] || "#8b5cf6";
+            return (
+              <button
+                key={cat}
+                onClick={() => setCategoryFilter(cat)}
+                className="px-3 py-1.5 rounded-lg text-xs font-semibold transition-all duration-200"
+                style={{
+                  background: categoryFilter === cat
+                    ? cat === "All" ? "rgba(124,58,237,0.18)" : `${color}20`
+                    : "var(--input-bg)",
+                  border: categoryFilter === cat
+                    ? cat === "All" ? "1px solid rgba(124,58,237,0.5)" : `1px solid ${color}50`
+                    : "1px solid var(--border-subtle)",
+                  color: categoryFilter === cat
+                    ? cat === "All" ? "var(--accent-purple)" : color
+                    : "var(--text-secondary)",
+                }}
+              >
+                {cat}
+              </button>
+            );
+          })}
         </div>
       </div>
 

@@ -1,13 +1,13 @@
 "use client";
 import { useEffect, useState, useCallback, useMemo } from "react";
 import Link from "next/link";
-import { Save, AlertTriangle, CheckCircle, Settings, Calculator } from "lucide-react";
+import { Save, AlertTriangle, CheckCircle, Settings, Calculator, Plus } from "lucide-react";
 import { api, BudgetWithSpending, BudgetCreate } from "@/lib/api";
-import BudgetProgressCard from "@/components/BudgetProgressCard";
+import BudgetProgressCard, { getCategoryColor } from "@/components/BudgetProgressCard";
 import { getCurrentMonth, formatMonthYear, getAvailableMonths } from "@/lib/dateUtils";
 import { formatETB } from "@/lib/currency";
 
-const CATEGORIES = ["Rent", "Food", "Transport", "Utilities", "Entertainment", "Others"];
+const BASE_CATEGORIES = ["Rent", "Food", "Transport", "Utilities", "Entertainment", "Others"];
 
 export default function BudgetsPage() {
   const availableMonths = useMemo(() => getAvailableMonths(6), []);
@@ -19,12 +19,34 @@ export default function BudgetsPage() {
   const [saveSuccess, setSaveSuccess] = useState(false);
   const [editorError, setEditorError] = useState("");
 
+  // Custom categories from localStorage
+  const [customCategories, setCustomCategories] = useState<string[]>(() => {
+    if (typeof window !== "undefined") {
+      try {
+        const saved = localStorage.getItem("spendpulse_custom_categories");
+        return saved ? JSON.parse(saved) : [];
+      } catch {
+        return [];
+      }
+    }
+    return [];
+  });
+  const [newCatInput, setNewCatInput] = useState("");
+  const [showAddCatInput, setShowAddCatInput] = useState(false);
+
   // Form state
   const [overallLimit, setOverallLimit] = useState(0);
   const [startingBalance, setStartingBalance] = useState(10000);
-  const [categoryLimits, setCategoryLimits] = useState<Record<string, number>>(
-    Object.fromEntries(CATEGORIES.map((c) => [c, 0]))
+  const [categoryLimits, setCategoryLimits] = useState<Record<string, number>>(() =>
+    Object.fromEntries(BASE_CATEGORIES.map((c) => [c, 0]))
   );
+
+  const allCategories = useMemo(() => {
+    const fromBudgetLimits = budget ? Object.keys(budget.category_limits || {}) : [];
+    const fromBudgetSpent = budget ? Object.keys(budget.category_spent || {}) : [];
+    const set = new Set<string>([...BASE_CATEGORIES, ...customCategories, ...fromBudgetLimits, ...fromBudgetSpent]);
+    return Array.from(set);
+  }, [budget, customCategories]);
 
   const fetchBudget = useCallback(async () => {
     setLoading(true);
@@ -33,17 +55,53 @@ export default function BudgetsPage() {
       setBudget(data);
       setOverallLimit(data.overall_limit);
       setStartingBalance(data.starting_balance ?? 10000);
-      const limits = Object.fromEntries(CATEGORIES.map((c) => [c, data.category_limits[c] ?? 0]));
+
+      let custom: string[] = [];
+      if (typeof window !== "undefined") {
+        try {
+          custom = JSON.parse(localStorage.getItem("spendpulse_custom_categories") || "[]");
+        } catch {}
+      }
+      const allCats = Array.from(new Set<string>([
+        ...BASE_CATEGORIES,
+        ...custom,
+        ...Object.keys(data.category_limits || {}),
+        ...Object.keys(data.category_spent || {}),
+      ]));
+      const limits = Object.fromEntries(allCats.map((c) => [c, data.category_limits[c] ?? 0]));
       setCategoryLimits(limits);
     } catch {
       setBudget(null);
       setOverallLimit(0);
       setStartingBalance(10000);
-      setCategoryLimits(Object.fromEntries(CATEGORIES.map((c) => [c, 0])));
+      let custom: string[] = [];
+      if (typeof window !== "undefined") {
+        try {
+          custom = JSON.parse(localStorage.getItem("spendpulse_custom_categories") || "[]");
+        } catch {}
+      }
+      const allCats = Array.from(new Set<string>([...BASE_CATEGORIES, ...custom]));
+      setCategoryLimits(Object.fromEntries(allCats.map((c) => [c, 0])));
     } finally {
       setLoading(false);
     }
   }, [selectedMonth]);
+
+  const handleAddCategory = () => {
+    const trimmed = newCatInput.trim();
+    if (!trimmed) return;
+    const formatted = trimmed.charAt(0).toUpperCase() + trimmed.slice(1);
+    if (!allCategories.includes(formatted)) {
+      const updated = [...customCategories, formatted];
+      setCustomCategories(updated);
+      try {
+        localStorage.setItem("spendpulse_custom_categories", JSON.stringify(updated));
+      } catch {}
+    }
+    setCategoryLimits((prev) => ({ ...prev, [formatted]: prev[formatted] ?? 0 }));
+    setNewCatInput("");
+    setShowAddCatInput(false);
+  };
 
   useEffect(() => { fetchBudget(); }, [fetchBudget]);
 
@@ -246,7 +304,7 @@ export default function BudgetsPage() {
 
           {/* Category progress cards */}
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 stagger">
-            {CATEGORIES.filter((c) => budget.category_limits[c] > 0).map((category) => (
+            {allCategories.filter((c) => (budget.category_limits[c] ?? 0) > 0).map((category) => (
               <BudgetProgressCard
                 key={category}
                 category={category}
@@ -257,15 +315,18 @@ export default function BudgetsPage() {
           </div>
 
           {/* Categories without limits */}
-          {CATEGORIES.some((c) => !budget.category_limits[c] && (budget.category_spent[c] ?? 0) > 0) && (
+          {allCategories.some((c) => !budget.category_limits[c] && (budget.category_spent[c] ?? 0) > 0) && (
             <div className="mt-6">
               <h3 className="text-sm font-semibold mb-3" style={{ color: "var(--text-secondary)" }}>
                 Spending without set limits
               </h3>
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                {CATEGORIES.filter((c) => !budget.category_limits[c] && (budget.category_spent[c] ?? 0) > 0).map((c) => (
+                {allCategories.filter((c) => !budget.category_limits[c] && (budget.category_spent[c] ?? 0) > 0).map((c) => (
                   <div key={c} className="glass-card p-4 flex items-center justify-between">
-                    <span className="text-sm font-medium" style={{ color: "var(--text-secondary)" }}>{c}</span>
+                    <div className="flex items-center gap-2">
+                      <div className="w-2.5 h-2.5 rounded-full" style={{ background: getCategoryColor(c) }} />
+                      <span className="text-sm font-medium" style={{ color: "var(--text-secondary)" }}>{c}</span>
+                    </div>
                     <span className="text-sm font-bold" style={{ color: "#f59e0b" }}>
                       {formatETB(budget.category_spent[c] ?? 0)}
                     </span>
@@ -358,21 +419,55 @@ export default function BudgetsPage() {
               </div>
 
               <div className="h-px" style={{ background: "var(--border-subtle)" }} />
-              <p className="text-xs font-semibold uppercase tracking-wider" style={{ color: "var(--text-secondary)" }}>
-                Category Limits
-              </p>
+              <div className="flex items-center justify-between">
+                <p className="text-xs font-semibold uppercase tracking-wider" style={{ color: "var(--text-secondary)" }}>
+                  Category Limits
+                </p>
+                <button
+                  type="button"
+                  onClick={() => setShowAddCatInput((v) => !v)}
+                  className="text-xs font-bold hover:underline cursor-pointer flex items-center gap-1"
+                  style={{ color: "var(--accent-purple)" }}
+                >
+                  <Plus size={13} /> {showAddCatInput ? "Cancel" : "Add Category"}
+                </button>
+              </div>
 
-              {CATEGORIES.map((cat) => (
+              {showAddCatInput && (
+                <div className="flex items-center gap-2 p-2.5 rounded-xl" style={{ background: "rgba(124,58,237,0.06)", border: "1px solid rgba(124,58,237,0.2)" }}>
+                  <input
+                    type="text"
+                    placeholder="New category name"
+                    value={newCatInput}
+                    onChange={(e) => setNewCatInput(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter") {
+                        e.preventDefault();
+                        handleAddCategory();
+                      }
+                    }}
+                    className="flex-1 px-3 py-1.5 rounded-lg text-sm outline-none"
+                    style={{ background: "var(--input-bg)", border: "1px solid var(--input-border)", color: "var(--text-primary)" }}
+                  />
+                  <button
+                    type="button"
+                    onClick={handleAddCategory}
+                    className="px-3 py-1.5 rounded-lg text-xs font-bold text-white shadow-sm cursor-pointer hover:opacity-90"
+                    style={{ background: "linear-gradient(135deg, #7c3aed, #3b82f6)" }}
+                  >
+                    Add
+                  </button>
+                </div>
+              )}
+
+              {allCategories.map((cat) => (
                 <div key={cat} className="flex items-center gap-4">
                   <div className="flex items-center gap-2 w-36">
                     <div
-                      className="w-2.5 h-2.5 rounded-full"
-                      style={{
-                        background: { Food: "#10b981", Transport: "#3b82f6", Utilities: "#f59e0b",
-                          Entertainment: "#a78bfa", Others: "#64748b" }[cat]
-                      }}
+                      className="w-2.5 h-2.5 rounded-full shrink-0"
+                      style={{ background: getCategoryColor(cat) }}
                     />
-                    <span className="text-sm font-medium" style={{ color: "var(--text-primary)" }}>{cat}</span>
+                    <span className="text-sm font-medium truncate" style={{ color: "var(--text-primary)" }}>{cat}</span>
                   </div>
                   <input
                     type="number"

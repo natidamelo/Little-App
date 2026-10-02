@@ -10,6 +10,17 @@ const CATEGORY_COLORS: Record<string, string> = {
   Others: "#64748b",
 };
 
+const PALETTE = ["#8b5cf6", "#ec4899", "#06b6d4", "#14b8a6", "#f97316", "#6366f1", "#84cc16"];
+
+export function getCategoryColor(name: string): string {
+  if (CATEGORY_COLORS[name]) return CATEGORY_COLORS[name];
+  let hash = 0;
+  for (let i = 0; i < name.length; i++) {
+    hash = name.charCodeAt(i) + ((hash << 5) - hash);
+  }
+  return PALETTE[Math.abs(hash) % PALETTE.length];
+}
+
 interface BudgetProgressCardProps {
   category: string;
   limit: number;
@@ -23,7 +34,7 @@ export default function BudgetProgressCard({
 }: BudgetProgressCardProps) {
   const pct = limit > 0 ? Math.min((spent / limit) * 100, 100) : 0;
   const remaining = Math.max(limit - spent, 0);
-  const color = CATEGORY_COLORS[category] ?? "#64748b";
+  const color = getCategoryColor(category);
 
   let statusColor = color;
   let statusLabel = `${formatETB(remaining)} left`;
