@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import "./globals.css";
 import Navbar from "@/components/Navbar";
 import { ThemeProvider } from "@/context/ThemeContext";
+import { ToastProvider } from "@/context/ToastContext";
 
 export const metadata: Metadata = {
   title: "SpendPulse — Personal Budget & Expense Tracker",
@@ -40,8 +41,10 @@ export default function RootLayout({
       </head>
       <body className="min-h-screen transition-colors duration-200" style={{ background: "var(--bg-primary)", color: "var(--text-primary)" }}>
         <ThemeProvider>
-          <Navbar />
-          <main className="pt-16">{children}</main>
+          <ToastProvider>
+            <Navbar />
+            <main className="pt-16">{children}</main>
+          </ToastProvider>
         </ThemeProvider>
       </body>
     </html>

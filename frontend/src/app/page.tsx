@@ -18,18 +18,23 @@ import {
   Clock,
   Pencil,
   X,
+  ArrowRight,
+  Trash2,
 } from "lucide-react";
-import { api, AnalyticsSummary, TransactionCreate } from "@/lib/api";
+import { api, AnalyticsSummary, Transaction, TransactionCreate } from "@/lib/api";
 import StatCard from "@/components/StatCard";
 import SpendingTrendChart from "@/components/SpendingTrendChart";
 import CategoryPieChart from "@/components/CategoryPieChart";
 import ExpenseForm from "@/components/ExpenseForm";
 import { getCurrentMonth, formatMonthYear } from "@/lib/dateUtils";
 import { formatETB } from "@/lib/currency";
+import { useToast } from "@/context/ToastContext";
 
 export default function DashboardPage() {
+  const { showToast } = useToast();
   const [currentMonth] = useState(getCurrentMonth);
   const [summary, setSummary] = useState<AnalyticsSummary | null>(null);
+  const [recentTransactions, setRecentTransactions] = useState<Transaction[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [showForm, setShowForm] = useState(false);
@@ -43,8 +48,12 @@ export default function DashboardPage() {
   const fetchSummary = useCallback(async () => {
     try {
       setLoading(true);
-      const data = await api.getSummary(currentMonth);
+      const [data, recent] = await Promise.all([
+        api.getSummary(currentMonth),
+        api.getTransactions({ month: currentMonth }),
+      ]);
       setSummary(data);
+      setRecentTransactions(recent.slice(0, 7));
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : "Failed to load data");
     } finally {
@@ -57,6 +66,7 @@ export default function DashboardPage() {
   const handleAddTransaction = async (data: TransactionCreate) => {
     await api.createTransaction(data);
     await fetchSummary();
+    showToast(`${data.type === "Income" ? "Income" : "Expense"} added — ${formatETB(data.amount)}`, "success");
   };
 
   const openExpenseModal = () => {
@@ -85,8 +95,10 @@ export default function DashboardPage() {
       await api.updateStartingBalance(currentMonth, val);
       await fetchSummary();
       setShowBalanceModal(false);
+      showToast(`Starting balance updated to ${formatETB(val)}`, "success");
     } catch (err) {
       console.error(err);
+      showToast("Failed to update starting balance", "error");
     } finally {
       setSavingBalance(false);
     }
@@ -446,6 +458,91 @@ export default function DashboardPage() {
             </div>
           )}
         </div>
+      </div>
+
+      {/* ── Feature 1: Recent Transactions ── */}
+      <div className="mt-6 glass-card overflow-hidden fade-in">
+        <div className="flex items-center justify-between px-5 py-4" style={{ borderBottom: "1px solid var(--border-subtle)" }}>
+          <div>
+            <h2 className="text-sm font-bold" style={{ color: "var(--text-primary)" }}>Recent Activity</h2>
+            <p className="text-xs mt-0.5" style={{ color: "var(--text-muted)" }}>Last 7 transactions this month</p>
+          </div>
+          <Link
+            href="/transactions"
+            className="flex items-center gap-1 text-xs font-semibold hover:underline"
+            style={{ color: "var(--accent-purple)" }}
+          >
+            View All <ArrowRight size={13} />
+          </Link>
+        </div>
+
+        {recentTransactions.length === 0 ? (
+          <div className="p-8 text-center">
+            <div className="text-3xl mb-2">💳</div>
+            <p className="text-sm" style={{ color: "var(--text-muted)" }}>No transactions this month yet</p>
+            <button
+              onClick={openExpenseModal}
+              className="mt-3 px-4 py-2 rounded-xl text-xs font-bold shadow-md hover:opacity-90"
+              style={{ background: "linear-gradient(135deg, #7c3aed, #3b82f6)", color: "#fff" }}
+            >
+              + Add First Expense
+            </button>
+          </div>
+        ) : (
+          <div>
+            {recentTransactions.map((tx, i) => {
+              const isIncome = tx.type === "Income";
+              const catColor: Record<string, string> = {
+                Rent: "#e11d48", Food: "#10b981", Transport: "#3b82f6", Utilities: "#f59e0b",
+                Entertainment: "#a78bfa", Others: "#64748b",
+                Salary: "#10b981", "Ride Income": "#06b6d4", Freelance: "#f59e0b", "Other Income": "#a855f7",
+              };
+              const color = catColor[tx.category] ?? "#8b5cf6";
+              return (
+                <div
+                  key={tx.id}
+                  className="flex items-center justify-between px-5 py-3.5 transition-colors hover:bg-white/[0.02]"
+                  style={{ borderBottom: i < recentTransactions.length - 1 ? "1px solid var(--border-subtle)" : "none" }}
+                >
+                  <div className="flex items-center gap-3">
+                    <div
+                      className="w-9 h-9 rounded-xl flex items-center justify-center flex-shrink-0"
+                      style={{ background: `${color}18` }}
+                    >
+                      {isIncome
+                        ? <TrendingUp size={16} style={{ color: "#10b981" }} />
+                        : <TrendingDown size={16} style={{ color }} />
+                      }
+                    </div>
+                    <div>
+                      <div className="flex items-center gap-2">
+                        <span className="text-sm font-semibold" style={{ color: "var(--text-primary)" }}>
+                          {tx.category}
+                        </span>
+                        {isIncome && (
+                          <span className="text-[10px] font-bold px-1.5 py-0.5 rounded" style={{ background: "rgba(16,185,129,0.12)", color: "#10b981" }}>
+                            INCOME
+                          </span>
+                        )}
+                      </div>
+                      <p className="text-xs mt-0.5" style={{ color: "var(--text-muted)" }}>
+                        {new Date(tx.date + "T00:00:00").toLocaleDateString("en-US", { month: "short", day: "numeric" })}
+                        {tx.note ? ` · ${tx.note}` : ""}
+                        {" · "}{tx.payment_method}
+                      </p>
+                    </div>
+                  </div>
+                  <span
+                    className="text-sm font-extrabold"
+                    style={{ color: isIncome ? "#10b981" : "var(--text-primary)" }}
+                  >
+                    {isIncome ? "+" : "−"}{formatETB(tx.amount)}
+                  </span>
+                </div>
+              );
+            })}
+          </div>
+        )}
       </div>
 
       {/* Unified Transaction Modal */}

@@ -6,10 +6,12 @@ import { api, BudgetWithSpending, BudgetCreate } from "@/lib/api";
 import BudgetProgressCard, { getCategoryColor } from "@/components/BudgetProgressCard";
 import { getCurrentMonth, formatMonthYear, getAvailableMonths } from "@/lib/dateUtils";
 import { formatETB } from "@/lib/currency";
+import { useToast } from "@/context/ToastContext";
 
 const BASE_CATEGORIES = ["Rent", "Food", "Transport", "Utilities", "Entertainment", "Others"];
 
 export default function BudgetsPage() {
+  const { showToast } = useToast();
   const availableMonths = useMemo(() => getAvailableMonths(6), []);
   const [selectedMonth, setSelectedMonth] = useState(getCurrentMonth);
   const [budget, setBudget] = useState<BudgetWithSpending | null>(null);
@@ -129,9 +131,12 @@ export default function BudgetsPage() {
       await fetchBudget();
       setSaveSuccess(true);
       setShowEditor(false);
+      showToast(`Budget for ${formatMonthYear(selectedMonth)} saved!`, "success");
       setTimeout(() => setSaveSuccess(false), 3000);
     } catch (e: unknown) {
-      setEditorError(e instanceof Error ? e.message : "Failed to save budget");
+      const msg = e instanceof Error ? e.message : "Failed to save budget";
+      setEditorError(msg);
+      showToast(msg, "error");
     } finally {
       setSaving(false);
     }
