@@ -123,14 +123,7 @@ async def get_planner_settings():
             except Exception:
                 continue
 
-        # If planner doc exists but is completely empty, try checking active budget
         var_limits = doc.get("variable_limits") or DEFAULT_VARIABLE_LIMITS
-        if len(items) == 0 and sum(var_limits.values()) == 0:
-            budget_cfg = await load_from_budget(db)
-            if budget_cfg:
-                budget_cfg.monthly_income = float(doc.get("monthly_income") or 0.0)
-                budget_cfg.savings_target_pct = float(doc.get("savings_target_pct") or 20.0)
-                return compute_metrics(budget_cfg)
 
         cfg = PlannerConfig(
             monthly_income=float(doc.get("monthly_income") or 0.0),

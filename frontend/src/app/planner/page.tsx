@@ -66,24 +66,11 @@ export default function PlannerPage() {
   // Log expense modal
   const [logExpenseInitial, setLogExpenseInitial] = useState<Partial<TransactionCreate> | null>(null);
 
-  // Fetch planner on mount (and auto-import from budget if planner is empty)
+  // Fetch planner on mount
   useEffect(() => {
     async function load() {
       try {
         let data: PlannerResponse = await api.getPlanner();
-        const hasFixed = data.fixed_items && data.fixed_items.length > 0;
-        const totalVar = Object.values(data.variable_limits || {}).reduce((a, b) => a + (Number(b) || 0), 0);
-
-        if (!hasFixed && totalVar === 0) {
-          try {
-            const imported = await api.importBudgetToPlanner(currentMonth);
-            if (imported.total_needed_to_spend > 0) {
-              data = imported;
-            }
-          } catch {
-            // Keep default
-          }
-        }
 
         setMonthlyIncome(data.monthly_income || 0);
         setSavingsPct(data.savings_target_pct || 20);
@@ -173,8 +160,8 @@ export default function PlannerPage() {
     return Math.round((totalFixed / base) * 100);
   }, [totalFixed, monthlyIncome, targetMonthlyIncome]);
 
-  // Add fixed item
-  const handleAddFixedItem = (e: React.FormEvent) => {
+  // Add fixed item with instant auto-save to MongoDB
+  const handleAddFixedItem = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!newItemName.trim() || !newItemAmount || Number(newItemAmount) <= 0) return;
 
@@ -184,9 +171,23 @@ export default function PlannerPage() {
       amount: parseFloat(newItemAmount),
       category: newItemCat,
     };
-    setFixedItems((prev) => [newItem, ...prev]);
+    const updated = [newItem, ...fixedItems];
+    setFixedItems(updated);
     setNewItemName("");
     setNewItemAmount("");
+
+    try {
+      await api.savePlanner({
+        monthly_income: monthlyIncome,
+        savings_target_pct: savingsPct,
+        fixed_items: updated,
+        variable_limits: variableLimits,
+      });
+      setMessage({ type: "success", text: `Added "${newItem.name}" to fixed obligations!` });
+      setTimeout(() => setMessage(null), 3000);
+    } catch {
+      setMessage({ type: "error", text: "Failed to save to database." });
+    }
   };
 
   // Inline update of fixed item amount
@@ -196,9 +197,41 @@ export default function PlannerPage() {
     );
   };
 
-  // Remove fixed item
-  const handleRemoveFixedItem = (id: string) => {
-    setFixedItems((prev) => prev.filter((it) => it.id !== id));
+  // Auto-save on blur after editing amount
+  const handleBlurFixedAmount = async () => {
+    try {
+      await api.savePlanner({
+        monthly_income: monthlyIncome,
+        savings_target_pct: savingsPct,
+        fixed_items: fixedItems,
+        variable_limits: variableLimits,
+      });
+    } catch {
+      // ignore
+    }
+  };
+
+  // Remove fixed item with instant auto-save to MongoDB
+  const handleRemoveFixedItem = async (id: string) => {
+    const itemToRemove = fixedItems.find((it) => it.id === id);
+    const updated = fixedItems.filter((it) => it.id !== id);
+    setFixedItems(updated);
+
+    try {
+      await api.savePlanner({
+        monthly_income: monthlyIncome,
+        savings_target_pct: savingsPct,
+        fixed_items: updated,
+        variable_limits: variableLimits,
+      });
+      setMessage({
+        type: "success",
+        text: itemToRemove ? `Removed "${itemToRemove.name}".` : "Removed fixed obligation.",
+      });
+      setTimeout(() => setMessage(null), 3000);
+    } catch {
+      setMessage({ type: "error", text: "Failed to update database." });
+    }
   };
 
   // Update variable category limit
@@ -721,6 +754,7 @@ export default function PlannerPage() {
                         step="any"
                         value={item.amount || ""}
                         onChange={(e) => handleUpdateFixedAmount(item.id, parseFloat(e.target.value) || 0)}
+                        onBlur={handleBlurFixedAmount}
                         title="Click to edit amount directly"
                         className="w-28 text-right pr-10 pl-2 py-1.5 rounded-lg text-sm font-bold outline-none focus:ring-2 focus:ring-rose-500/40 transition-all"
                         style={{
