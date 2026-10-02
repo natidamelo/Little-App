@@ -9,6 +9,14 @@ from motor.motor_asyncio import AsyncIOMotorClient
 import os
 from dotenv import load_dotenv
 
+# Ensure robust DNS resolution for mongodb+srv across all networks
+try:
+    import dns.resolver
+    resolver = dns.resolver.get_default_resolver()
+    resolver.nameservers = ['8.8.8.8', '1.1.1.1'] + [ns for ns in resolver.nameservers if ns not in ['8.8.8.8', '1.1.1.1']]
+except Exception:
+    pass
+
 load_dotenv()
 
 MONGODB_URL = os.getenv("MONGODB_URL", "mongodb://localhost:27017")
