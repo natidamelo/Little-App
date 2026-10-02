@@ -101,8 +101,17 @@ async function request<T>(path: string, options?: RequestInit): Promise<T> {
     ...options,
   });
   if (!res.ok) {
-    const err = await res.text();
-    throw new Error(err || `Request failed: ${res.status}`);
+    const errText = await res.text();
+    let message = errText;
+    try {
+      const parsed = JSON.parse(errText);
+      if (typeof parsed.detail === "string") {
+        message = parsed.detail;
+      } else if (Array.isArray(parsed.detail)) {
+        message = parsed.detail.map((d: { msg?: string }) => d.msg || JSON.stringify(d)).join(", ");
+      }
+    } catch {}
+    throw new Error(message || `Request failed: ${res.status}`);
   }
   if (res.status === 204) return undefined as T;
   return res.json();

@@ -1,6 +1,6 @@
 from pydantic import BaseModel, Field
 from typing import Optional, Dict, Union, List
-from datetime import date, datetime
+from datetime import date as dt_date, datetime
 from enum import Enum
 
 
@@ -35,7 +35,7 @@ class TransactionCreate(BaseModel):
     amount: float = Field(..., gt=0, description="Amount in ETB, must be positive")
     type: str = Field(default="Expense", description="'Expense' or 'Income'")
     category: Union[CategoryEnum, str]
-    date: date
+    date: dt_date
     payment_method: Union[PaymentMethodEnum, str] = Field(..., description="Payment method / Bank: CBE, Abyssinia, Telebirr, Cash, etc.")
     note: Optional[str] = None
 
@@ -55,7 +55,7 @@ class TransactionUpdate(BaseModel):
     amount: Optional[float] = Field(None, gt=0)
     type: Optional[str] = None
     category: Optional[Union[CategoryEnum, str]] = None
-    date: Optional[date] = None
+    date: Optional[dt_date] = None
     payment_method: Optional[Union[PaymentMethodEnum, str]] = None
     note: Optional[str] = None
 
