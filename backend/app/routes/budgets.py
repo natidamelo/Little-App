@@ -67,8 +67,6 @@ async def get_budget(month_year: str):
     db = get_database()
 
     budget = await db.budgets.find_one({"month_year": month_year})
-    if not budget:
-        raise HTTPException(status_code=404, detail=f"No budget set for {month_year}")
 
     # Calculate spending totals for the month
     try:
@@ -87,6 +85,17 @@ async def get_budget(month_year: str):
 
     category_spent = {doc["_id"]: round(doc["total"], 2) for doc in category_docs}
     overall_spent = round(sum(category_spent.values()), 2)
+
+    if not budget:
+        return {
+            "id": "",
+            "month_year": month_year,
+            "overall_limit": 0.0,
+            "starting_balance": 10000.0,
+            "overall_spent": overall_spent,
+            "category_limits": {},
+            "category_spent": category_spent,
+        }
 
     return {
         "id": str(budget["_id"]),
