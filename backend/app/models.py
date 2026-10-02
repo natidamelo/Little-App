@@ -122,6 +122,7 @@ class FixedExpenseItem(BaseModel):
     name: str
     amount: float = Field(..., ge=0)
     category: str = "Rent"
+    due_day: Optional[int] = Field(default=None, ge=1, le=31)
 
 
 class PlannerConfig(BaseModel):

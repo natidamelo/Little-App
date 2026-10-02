@@ -20,6 +20,7 @@ import {
   Download,
   Upload,
   RefreshCw,
+  Clock,
 } from "lucide-react";
 import {
   api,
@@ -28,10 +29,12 @@ import {
   PlannerResponse,
   Transaction,
   TransactionCreate,
+  AnalyticsSummary,
 } from "@/lib/api";
 import { formatETB } from "@/lib/currency";
 import { getCurrentMonth, formatMonthYear } from "@/lib/dateUtils";
 import ExpenseForm from "@/components/ExpenseForm";
+import BillPaymentModal from "@/components/BillPaymentModal";
 
 const PRESET_SAVINGS = [0, 10, 15, 20, 25, 30];
 const FIXED_CATEGORIES = ["Rent", "Utilities", "Transport", "Others"];
@@ -55,40 +58,43 @@ export default function PlannerPage() {
     Others: 0,
   });
 
-  // Recorded transactions this month to track paid bills
+  // Recorded transactions & summary to track available cash and paid bills
   const [monthTransactions, setMonthTransactions] = useState<Transaction[]>([]);
+  const [summary, setSummary] = useState<AnalyticsSummary | null>(null);
+
+  // Pay bill modal
+  const [payingBillItem, setPayingBillItem] = useState<FixedExpenseItem | null>(null);
 
   // New fixed item draft
   const [newItemName, setNewItemName] = useState("");
   const [newItemAmount, setNewItemAmount] = useState("");
   const [newItemCat, setNewItemCat] = useState("Rent");
+  const [newItemDueDay, setNewItemDueDay] = useState("");
 
   // Log expense modal
   const [logExpenseInitial, setLogExpenseInitial] = useState<Partial<TransactionCreate> | null>(null);
 
-  // Fetch planner on mount
+  // Fetch planner & summary on mount
   useEffect(() => {
     async function load() {
       try {
-        let data: PlannerResponse = await api.getPlanner();
+        const [plannerData, summaryData, txs] = await Promise.all([
+          api.getPlanner(),
+          api.getSummary(currentMonth).catch(() => null),
+          api.getTransactions({ month: currentMonth }).catch(() => []),
+        ]);
 
-        setMonthlyIncome(data.monthly_income || 0);
-        setSavingsPct(data.savings_target_pct || 20);
-        setFixedItems(data.fixed_items || []);
+        if (summaryData) setSummary(summaryData);
+        setMonthTransactions(txs);
+        setMonthlyIncome(plannerData.monthly_income || 0);
+        setSavingsPct(plannerData.savings_target_pct || 20);
+        setFixedItems(plannerData.fixed_items || []);
         setVariableLimits({
-          Food: Number(data.variable_limits?.Food) || 0,
-          Transport: Number(data.variable_limits?.Transport) || 0,
-          Entertainment: Number(data.variable_limits?.Entertainment) || 0,
-          Others: Number(data.variable_limits?.Others) || 0,
+          Food: Number(plannerData.variable_limits?.Food) || 0,
+          Transport: Number(plannerData.variable_limits?.Transport) || 0,
+          Entertainment: Number(plannerData.variable_limits?.Entertainment) || 0,
+          Others: Number(plannerData.variable_limits?.Others) || 0,
         });
-
-        // Load recorded transactions to check what bills are already paid
-        try {
-          const txs = await api.getTransactions({ month: currentMonth });
-          setMonthTransactions(txs);
-        } catch {
-          // ignore
-        }
       } catch (e) {
         console.error("Failed to load planner settings", e);
       } finally {
@@ -165,16 +171,19 @@ export default function PlannerPage() {
     e.preventDefault();
     if (!newItemName.trim() || !newItemAmount || Number(newItemAmount) <= 0) return;
 
+    const dueDayNum = newItemDueDay ? parseInt(newItemDueDay) : undefined;
     const newItem: FixedExpenseItem = {
       id: `fix-${Date.now()}`,
       name: newItemName.trim(),
       amount: parseFloat(newItemAmount),
       category: newItemCat,
+      due_day: dueDayNum && dueDayNum >= 1 && dueDayNum <= 31 ? dueDayNum : undefined,
     };
     const updated = [newItem, ...fixedItems];
     setFixedItems(updated);
     setNewItemName("");
     setNewItemAmount("");
+    setNewItemDueDay("");
 
     try {
       await api.savePlanner({
@@ -646,7 +655,7 @@ export default function PlannerPage() {
               <p className="text-xs font-bold mb-2.5 flex items-center gap-1.5" style={{ color: "var(--text-primary)" }}>
                 <Plus size={14} className="text-rose-500" /> Add New Fixed Bill (Rent, WiFi, etc.)
               </p>
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5 mb-2.5">
+              <div className="grid grid-cols-1 sm:grid-cols-4 gap-2 mb-2.5">
                 <input
                   type="text"
                   required
@@ -691,6 +700,21 @@ export default function PlannerPage() {
                     </option>
                   ))}
                 </select>
+                <input
+                  type="number"
+                  min="1"
+                  max="31"
+                  placeholder="Due Day (1-31)"
+                  title="Day of the month this bill is due (optional)"
+                  value={newItemDueDay}
+                  onChange={(e) => setNewItemDueDay(e.target.value)}
+                  className="px-3 py-2 rounded-xl text-xs font-medium outline-none"
+                  style={{
+                    background: "var(--bg-card)",
+                    border: "1px solid var(--border-subtle)",
+                    color: "var(--text-primary)",
+                  }}
+                />
               </div>
               <button
                 type="submit"
@@ -739,9 +763,23 @@ export default function PlannerPage() {
                       <p className="text-sm font-bold" style={{ color: "var(--text-primary)" }}>
                         {item.name}
                       </p>
-                      <span className="text-[11px] font-medium" style={{ color: "var(--text-secondary)" }}>
-                        {item.category}
-                      </span>
+                      <div className="flex items-center gap-2 mt-0.5">
+                        <span className="text-[11px] font-medium" style={{ color: "var(--text-secondary)" }}>
+                          {item.category}
+                        </span>
+                        {item.due_day && (
+                          <span
+                            className="text-[10px] font-bold px-1.5 py-0.2 rounded-md flex items-center gap-0.5"
+                            style={{
+                              background: "rgba(245, 158, 11, 0.12)",
+                              color: "#f59e0b",
+                              border: "1px solid rgba(245, 158, 11, 0.25)",
+                            }}
+                          >
+                            <Clock size={9} /> Due {item.due_day}th
+                          </span>
+                        )}
+                      </div>
                     </div>
                   </div>
 
@@ -787,8 +825,8 @@ export default function PlannerPage() {
                       }
                       return (
                         <button
-                          onClick={() => handleQuickLog(item)}
-                          title={`Log payment for ${item.name}`}
+                          onClick={() => setPayingBillItem(item)}
+                          title={`Check affordability & pay ${item.name}`}
                           className="flex items-center gap-1 px-3 py-1.5 rounded-lg text-xs font-bold transition-all hover:scale-105 active:scale-95 cursor-pointer shadow-sm"
                           style={{
                             background: "linear-gradient(135deg, #10b981, #059669)",
@@ -981,6 +1019,29 @@ export default function PlannerPage() {
             />
           </div>
         </div>
+      )}
+
+      {/* Smart Bill Payment & Affordability Analysis Modal */}
+      {payingBillItem && (
+        <BillPaymentModal
+          item={payingBillItem}
+          summary={summary}
+          monthTransactions={monthTransactions}
+          onClose={() => setPayingBillItem(null)}
+          onPaymentSuccess={async () => {
+            const [s, txs] = await Promise.all([
+              api.getSummary(currentMonth).catch(() => null),
+              api.getTransactions({ month: currentMonth }).catch(() => []),
+            ]);
+            if (s) setSummary(s);
+            setMonthTransactions(txs);
+            setMessage({
+              type: "success",
+              text: `Payment recorded for ${payingBillItem.name}! Available balance updated.`,
+            });
+            setTimeout(() => setMessage(null), 4000);
+          }}
+        />
       )}
     </div>
   );

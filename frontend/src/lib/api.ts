@@ -67,6 +67,7 @@ export interface FixedExpenseItem {
   name: string;
   amount: number;
   category: string;
+  due_day?: number;
 }
 
 export interface PlannerConfig {
