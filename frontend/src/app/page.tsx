@@ -1,5 +1,5 @@
 "use client";
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useState, useCallback, useMemo } from "react";
 import Link from "next/link";
 import {
   Banknote,
@@ -20,6 +20,14 @@ import {
   X,
   ArrowRight,
   Trash2,
+  Activity,
+  Target,
+  PiggyBank,
+  Zap,
+  Sun,
+  Moon,
+  Sunrise,
+  Sunset,
 } from "lucide-react";
 import { api, AnalyticsSummary, Transaction, TransactionCreate } from "@/lib/api";
 import StatCard from "@/components/StatCard";
@@ -29,6 +37,15 @@ import ExpenseForm from "@/components/ExpenseForm";
 import { getCurrentMonth, formatMonthYear } from "@/lib/dateUtils";
 import { formatETB } from "@/lib/currency";
 import { useToast } from "@/context/ToastContext";
+
+function getGreeting(): { text: string; icon: React.ReactNode } {
+  const h = new Date().getHours();
+  if (h < 6) return { text: "Good Night", icon: <Moon size={20} className="text-indigo-400" /> };
+  if (h < 12) return { text: "Good Morning", icon: <Sunrise size={20} className="text-amber-400" /> };
+  if (h < 17) return { text: "Good Afternoon", icon: <Sun size={20} className="text-yellow-400" /> };
+  if (h < 21) return { text: "Good Evening", icon: <Sunset size={20} className="text-orange-400" /> };
+  return { text: "Good Night", icon: <Moon size={20} className="text-indigo-400" /> };
+}
 
 export default function DashboardPage() {
   const { showToast } = useToast();
@@ -45,6 +62,10 @@ export default function DashboardPage() {
   const [editBalanceInput, setEditBalanceInput] = useState<string>("");
   const [savingBalance, setSavingBalance] = useState(false);
 
+  // Edit / Delete transaction
+  const [editingTx, setEditingTx] = useState<Transaction | null>(null);
+  const [deletingId, setDeletingId] = useState<string | null>(null);
+
   const fetchSummary = useCallback(async () => {
     try {
       setLoading(true);
@@ -53,7 +74,7 @@ export default function DashboardPage() {
         api.getTransactions({ month: currentMonth }),
       ]);
       setSummary(data);
-      setRecentTransactions(recent.slice(0, 7));
+      setRecentTransactions(recent.slice(0, 8));
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : "Failed to load data");
     } finally {
@@ -69,6 +90,27 @@ export default function DashboardPage() {
     showToast(`${data.type === "Income" ? "Income" : "Expense"} added — ${formatETB(data.amount)}`, "success");
   };
 
+  const handleEditTransaction = async (data: TransactionCreate) => {
+    if (!editingTx) return;
+    await api.updateTransaction(editingTx.id, data);
+    await fetchSummary();
+    setEditingTx(null);
+    showToast("Transaction updated!", "success");
+  };
+
+  const handleDeleteTransaction = async (id: string) => {
+    setDeletingId(id);
+    try {
+      await api.deleteTransaction(id);
+      await fetchSummary();
+      showToast("Transaction deleted", "success");
+    } catch {
+      showToast("Failed to delete", "error");
+    } finally {
+      setDeletingId(null);
+    }
+  };
+
   const openExpenseModal = () => {
     setFormInitial({ type: "Expense", category: "Food" });
     setShowForm(true);
@@ -80,9 +122,7 @@ export default function DashboardPage() {
   };
 
   const openStartingBalanceModal = () => {
-    if (summary) {
-      setEditBalanceInput(String(summary.starting_balance));
-    }
+    if (summary) setEditBalanceInput(String(summary.starting_balance));
     setShowBalanceModal(true);
   };
 
@@ -96,8 +136,7 @@ export default function DashboardPage() {
       await fetchSummary();
       setShowBalanceModal(false);
       showToast(`Starting balance updated to ${formatETB(val)}`, "success");
-    } catch (err) {
-      console.error(err);
+    } catch {
       showToast("Failed to update starting balance", "error");
     } finally {
       setSavingBalance(false);
@@ -113,254 +152,272 @@ export default function DashboardPage() {
     : 0;
 
   const isProfit = summary.net_cashflow >= 0;
+  const greeting = getGreeting();
+
+  // Spending velocity: are we spending faster than expected for this point in the month?
+  const dayOfMonth = Math.max(1, summary.days_in_month - summary.days_remaining);
+  const expectedSpentByNow = summary.overall_limit > 0
+    ? (summary.overall_limit / summary.days_in_month) * dayOfMonth
+    : 0;
+  const spendingVelocity = expectedSpentByNow > 0
+    ? Math.round((summary.total_spent / expectedSpentByNow) * 100)
+    : 0;
+
+  // Top 3 categories for quick view
+  const topCategories = Object.entries(summary.category_breakdown)
+    .sort(([, a], [, b]) => b - a)
+    .slice(0, 4);
 
   return (
-    <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-      {/* Page Header */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-8 fade-in">
+    <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6 sm:py-8">
+      {/* ═══════════ Greeting Header ═══════════ */}
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-6 fade-in">
         <div>
-          <h1 className="text-2xl font-extrabold gradient-text">Dashboard</h1>
-          <p className="text-sm mt-1" style={{ color: "var(--text-secondary)" }}>
-            {formatMonthYear(currentMonth)} · Spending & Ride Cash Flow
+          <div className="flex items-center gap-2 mb-1">
+            {greeting.icon}
+            <h1 className="text-xl sm:text-2xl font-extrabold gradient-text">{greeting.text}</h1>
+          </div>
+          <p className="text-sm" style={{ color: "var(--text-secondary)" }}>
+            {formatMonthYear(currentMonth)} · Day {dayOfMonth} of {summary.days_in_month} · {summary.days_remaining} days left
           </p>
         </div>
 
-        <div className="flex items-center gap-2.5 flex-wrap">
+        <div className="flex items-center gap-2 flex-wrap">
           <Link
             href="/planner"
-            className="flex items-center gap-1.5 px-3.5 py-2.5 rounded-xl text-sm font-semibold transition-all hover:scale-105 active:scale-95"
+            className="flex items-center gap-1.5 px-3 py-2.5 rounded-xl text-xs sm:text-sm font-semibold transition-all hover:scale-105 active:scale-95"
             style={{
               background: "rgba(124,58,237,0.12)",
               border: "1px solid rgba(124,58,237,0.3)",
               color: "var(--accent-purple)",
             }}
           >
-            <Calculator size={15} /> Planner
+            <Calculator size={15} />
+            <span className="hidden sm:inline">Planner</span>
           </Link>
 
-          {/* Quick Ride Income Button */}
           <button
-            id="add-ride-btn"
             onClick={openRideModal}
-            className="flex items-center gap-1.5 px-4 py-2.5 rounded-xl text-sm font-bold transition-all duration-200 hover:opacity-90 active:scale-[0.97] shadow-md cursor-pointer"
+            className="flex items-center gap-1.5 px-3 sm:px-4 py-2.5 rounded-xl text-xs sm:text-sm font-bold transition-all hover:opacity-90 active:scale-[0.97] shadow-md cursor-pointer"
             style={{ background: "linear-gradient(135deg, #10b981, #059669)", color: "#fff" }}
           >
-            <Car size={16} />
-            + Ride Income
+            <Car size={15} />
+            <span className="hidden sm:inline">+ Ride</span>
+            <span className="sm:hidden">Ride</span>
           </button>
 
-          {/* Quick Expense Button */}
           <button
-            id="add-expense-btn"
             onClick={openExpenseModal}
-            className="flex items-center gap-1.5 px-4 py-2.5 rounded-xl text-sm font-bold transition-all duration-200 hover:opacity-90 active:scale-[0.97] shadow-md cursor-pointer"
+            className="flex items-center gap-1.5 px-3 sm:px-4 py-2.5 rounded-xl text-xs sm:text-sm font-bold transition-all hover:opacity-90 active:scale-[0.97] shadow-md cursor-pointer"
             style={{ background: "linear-gradient(135deg, #7c3aed, #3b82f6)", color: "#fff" }}
           >
-            <Plus size={16} />
-            + Expense
+            <Plus size={15} />
+            <span className="hidden sm:inline">+ Expense</span>
+            <span className="sm:hidden">Expense</span>
           </button>
         </div>
       </div>
 
-      {/* Cash Flow & Ride Performance Diagnostic Banner */}
+      {/* ═══════════ Quick Stats Strip ═══════════ */}
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-6 stagger">
+        {/* Cash In Hand */}
+        <div
+          className="glass-card p-4 relative overflow-hidden cursor-pointer hover:scale-[1.02] transition-all"
+          onClick={openStartingBalanceModal}
+        >
+          <div className="flex items-center justify-between mb-1">
+            <span className="text-[10px] sm:text-xs font-semibold uppercase tracking-wider" style={{ color: "var(--text-secondary)" }}>
+              Cash In Hand
+            </span>
+            <div className="w-8 h-8 rounded-lg flex items-center justify-center" style={{ background: "rgba(16,185,129,0.12)" }}>
+              <Wallet size={16} style={{ color: "#10b981" }} />
+            </div>
+          </div>
+          <p className="text-xl sm:text-2xl font-extrabold" style={{ color: summary.available_cash < 0 ? "#f43f5e" : "#10b981" }}>
+            {formatETB(summary.available_cash, 0)}
+          </p>
+          <p className="text-[10px] mt-1" style={{ color: "var(--text-muted)" }}>
+            Started: {formatETB(summary.starting_balance, 0)}
+          </p>
+          <div
+            className="absolute bottom-0 left-0 right-0 h-1"
+            style={{ background: summary.available_cash >= 0 ? "#10b981" : "#f43f5e" }}
+          />
+        </div>
+
+        {/* Total Spent */}
+        <div className="glass-card p-4 relative overflow-hidden">
+          <div className="flex items-center justify-between mb-1">
+            <span className="text-[10px] sm:text-xs font-semibold uppercase tracking-wider" style={{ color: "var(--text-secondary)" }}>
+              Total Spent
+            </span>
+            <div className="w-8 h-8 rounded-lg flex items-center justify-center" style={{ background: "rgba(124,58,237,0.12)" }}>
+              <Banknote size={16} style={{ color: "#7c3aed" }} />
+            </div>
+          </div>
+          <p className="text-xl sm:text-2xl font-extrabold" style={{ color: "var(--text-primary)" }}>
+            {formatETB(summary.total_spent, 0)}
+          </p>
+          <p className="text-[10px] mt-1" style={{ color: "var(--text-muted)" }}>
+            Avg: {formatETB(summary.daily_average, 0)}/day
+          </p>
+          <div className="absolute bottom-0 left-0 right-0 h-1" style={{ background: "#7c3aed" }} />
+        </div>
+
+        {/* Total Income */}
+        <div className="glass-card p-4 relative overflow-hidden">
+          <div className="flex items-center justify-between mb-1">
+            <span className="text-[10px] sm:text-xs font-semibold uppercase tracking-wider" style={{ color: "var(--text-secondary)" }}>
+              Income Earned
+            </span>
+            <div className="w-8 h-8 rounded-lg flex items-center justify-center" style={{ background: "rgba(59,130,246,0.12)" }}>
+              <TrendingUp size={16} style={{ color: "#3b82f6" }} />
+            </div>
+          </div>
+          <p className="text-xl sm:text-2xl font-extrabold" style={{ color: "#3b82f6" }}>
+            {formatETB(summary.total_income, 0)}
+          </p>
+          <p className="text-[10px] mt-1" style={{ color: "var(--text-muted)" }}>
+            Ride: {formatETB(summary.ride_income_total, 0)}
+          </p>
+          <div className="absolute bottom-0 left-0 right-0 h-1" style={{ background: "#3b82f6" }} />
+        </div>
+
+        {/* Net Cashflow */}
+        <div className="glass-card p-4 relative overflow-hidden">
+          <div className="flex items-center justify-between mb-1">
+            <span className="text-[10px] sm:text-xs font-semibold uppercase tracking-wider" style={{ color: "var(--text-secondary)" }}>
+              Net Cashflow
+            </span>
+            <div className="w-8 h-8 rounded-lg flex items-center justify-center" style={{ background: isProfit ? "rgba(16,185,129,0.12)" : "rgba(244,63,94,0.12)" }}>
+              {isProfit ? <ArrowUpRight size={16} style={{ color: "#10b981" }} /> : <ArrowDownRight size={16} style={{ color: "#f43f5e" }} />}
+            </div>
+          </div>
+          <p className="text-xl sm:text-2xl font-extrabold" style={{ color: isProfit ? "#10b981" : "#f43f5e" }}>
+            {isProfit ? "+" : ""}{formatETB(summary.net_cashflow, 0)}
+          </p>
+          <p className="text-[10px] mt-1" style={{ color: "var(--text-muted)" }}>
+            Income vs Expenses
+          </p>
+          <div className="absolute bottom-0 left-0 right-0 h-1" style={{ background: isProfit ? "#10b981" : "#f43f5e" }} />
+        </div>
+      </div>
+
+      {/* ═══════════ Smart Insights Banner ═══════════ */}
       <div
-        className="glass-card p-5 mb-6 fade-in relative overflow-hidden"
+        className="glass-card p-4 sm:p-5 mb-6 fade-in"
         style={{
-          border: summary.cashflow_status === "profitable"
-            ? "1px solid rgba(16,185,129,0.3)"
-            : summary.cashflow_status === "deficit"
-            ? "1px solid rgba(244,63,94,0.3)"
-            : "1px solid rgba(59,130,246,0.3)",
+          borderLeft: `4px solid ${
+            summary.cashflow_status === "profitable" ? "#10b981"
+            : summary.cashflow_status === "deficit" ? "#f43f5e"
+            : "#3b82f6"
+          }`,
         }}
       >
-        <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-4 pb-4" style={{ borderBottom: "1px solid var(--border-subtle)" }}>
-          <div className="flex items-center gap-3">
+        <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
+          {/* Left: Status + Info */}
+          <div className="flex items-start gap-3 flex-1 min-w-0">
             <div
-              className="w-10 h-10 rounded-xl flex items-center justify-center flex-shrink-0"
+              className="w-10 h-10 rounded-xl flex items-center justify-center shrink-0 mt-0.5"
               style={{
-                background: summary.cashflow_status === "profitable"
-                  ? "rgba(16,185,129,0.15)"
-                  : summary.cashflow_status === "deficit"
-                  ? "rgba(244,63,94,0.15)"
+                background: summary.cashflow_status === "profitable" ? "rgba(16,185,129,0.15)"
+                  : summary.cashflow_status === "deficit" ? "rgba(244,63,94,0.15)"
                   : "rgba(59,130,246,0.15)",
               }}
             >
-              {summary.cashflow_status === "profitable" ? (
-                <CheckCircle2 size={22} style={{ color: "#10b981" }} />
-              ) : summary.cashflow_status === "deficit" ? (
-                <AlertCircle size={22} style={{ color: "#f43f5e" }} />
-              ) : (
-                <Clock size={22} style={{ color: "#3b82f6" }} />
-              )}
+              {summary.cashflow_status === "profitable" ? <CheckCircle2 size={20} style={{ color: "#10b981" }} />
+                : summary.cashflow_status === "deficit" ? <AlertCircle size={20} style={{ color: "#f43f5e" }} />
+                : <Clock size={20} style={{ color: "#3b82f6" }} />}
             </div>
-            <div>
-              <div className="flex items-center gap-2">
-                <span className="text-sm font-bold" style={{ color: "var(--text-primary)" }}>
-                  Cash Status:
-                </span>
+            <div className="min-w-0">
+              <div className="flex items-center gap-2 flex-wrap mb-1">
+                <span className="text-sm font-bold" style={{ color: "var(--text-primary)" }}>Cash Status</span>
                 <span
-                  className="text-xs font-extrabold px-2.5 py-0.5 rounded-full uppercase tracking-wider"
+                  className="text-[10px] font-extrabold px-2 py-0.5 rounded-full uppercase"
                   style={{
-                    background: summary.available_cash >= 0
-                      ? "rgba(16,185,129,0.15)"
-                      : "rgba(244,63,94,0.15)",
-                    color: summary.available_cash >= 0
-                      ? "#10b981"
-                      : "#f43f5e",
+                    background: summary.available_cash >= 0 ? "rgba(16,185,129,0.15)" : "rgba(244,63,94,0.15)",
+                    color: summary.available_cash >= 0 ? "#10b981" : "#f43f5e",
                   }}
                 >
-                  {summary.available_cash >= 0 ? "Cash In Hand: " + formatETB(summary.available_cash) : "Deficit: " + formatETB(summary.available_cash)}
+                  {summary.available_cash >= 0 ? formatETB(summary.available_cash, 0) + " available" : "Deficit"}
                 </span>
               </div>
-              <p className="text-xs mt-0.5" style={{ color: "var(--text-secondary)" }}>
-                Started with {formatETB(summary.starting_balance)} · Spent {formatETB(summary.total_spent)} · Earned {formatETB(summary.total_income)} · You currently have <strong>{formatETB(summary.available_cash)}</strong> available.
+              <p className="text-xs" style={{ color: "var(--text-secondary)" }}>
+                Started with {formatETB(summary.starting_balance, 0)} · Spent {formatETB(summary.total_spent, 0)} · Earned {formatETB(summary.total_income, 0)}
               </p>
             </div>
           </div>
 
-          {/* Quick Target Reminder */}
-          {summary.daily_ride_target > 0 ? (
+          {/* Right: Quick metrics */}
+          <div className="flex items-center gap-3 flex-wrap shrink-0">
+            {/* Spending Velocity */}
+            {summary.overall_limit > 0 && (
+              <div
+                className="px-3 py-2 rounded-xl text-center"
+                style={{
+                  background: spendingVelocity > 110 ? "rgba(244,63,94,0.1)" : spendingVelocity > 90 ? "rgba(245,158,11,0.1)" : "rgba(16,185,129,0.1)",
+                  border: `1px solid ${spendingVelocity > 110 ? "rgba(244,63,94,0.25)" : spendingVelocity > 90 ? "rgba(245,158,11,0.25)" : "rgba(16,185,129,0.25)"}`,
+                }}
+              >
+                <p className="text-[10px] font-semibold" style={{ color: "var(--text-muted)" }}>Spend Pace</p>
+                <p className="text-sm font-extrabold" style={{
+                  color: spendingVelocity > 110 ? "#f43f5e" : spendingVelocity > 90 ? "#f59e0b" : "#10b981"
+                }}>
+                  {spendingVelocity}%
+                </p>
+              </div>
+            )}
+
+            {/* Ride Target */}
             <div
-              className="px-3.5 py-2 rounded-xl text-right flex flex-col justify-center"
-              style={{ background: "rgba(59,130,246,0.1)", border: "1px solid rgba(59,130,246,0.2)" }}
+              className="px-3 py-2 rounded-xl text-center"
+              style={{ background: "rgba(59,130,246,0.1)", border: "1px solid rgba(59,130,246,0.25)" }}
             >
-              <span className="text-[11px] font-semibold text-blue-400">Daily Ride Target</span>
-              <span className="text-base font-extrabold text-blue-500">
-                {formatETB(summary.daily_ride_target)}/day
-              </span>
+              <p className="text-[10px] font-semibold" style={{ color: "var(--text-muted)" }}>Ride Target</p>
+              <p className="text-sm font-extrabold" style={{ color: "#3b82f6" }}>
+                {summary.daily_ride_target > 0 ? `${formatETB(summary.daily_ride_target, 0)}/day` : "Met! 🎉"}
+              </p>
             </div>
-          ) : (
-            <div
-              className="px-3.5 py-2 rounded-xl text-right flex flex-col justify-center"
-              style={{ background: "rgba(16,185,129,0.1)", border: "1px solid rgba(16,185,129,0.2)" }}
-            >
-              <span className="text-[11px] font-semibold text-emerald-400">Target Status</span>
-              <span className="text-sm font-extrabold text-emerald-500">Goal Met! 🎉</span>
-            </div>
-          )}
-        </div>
 
-        {/* 3 Metric Summary Cards */}
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-          {/* Daily Ride Target */}
-          <div
-            className="p-3.5 rounded-xl flex items-center gap-3.5"
-            style={{ background: "var(--input-bg)", border: "1px solid var(--border-subtle)" }}
-          >
-            <div className="w-10 h-10 rounded-xl flex items-center justify-center flex-shrink-0" style={{ background: "rgba(59,130,246,0.12)" }}>
-              <Car size={20} style={{ color: "#3b82f6" }} />
-            </div>
-            <div>
-              <p className="text-[11px] font-semibold uppercase tracking-wider" style={{ color: "var(--text-secondary)" }}>
-                Daily Ride Target
-              </p>
-              <p className="text-lg font-extrabold" style={{ color: "#3b82f6" }}>
-                {formatETB(summary.daily_ride_target)}
-              </p>
-              <p className="text-[10px]" style={{ color: "var(--text-muted)" }}>
-                {summary.days_remaining} days left this month
-              </p>
-            </div>
+            {/* Log Salary if not done */}
+            {!summary.income_by_category["Salary"] && summary.expected_salary > 0 && (
+              <button
+                onClick={() => {
+                  setFormInitial({ type: "Income", category: "Salary", amount: summary.expected_salary });
+                  setShowForm(true);
+                }}
+                className="px-3 py-2 rounded-xl text-xs font-bold transition-all hover:scale-105 active:scale-95 cursor-pointer"
+                style={{ background: "rgba(16,185,129,0.15)", border: "1px solid rgba(16,185,129,0.3)", color: "#10b981" }}
+              >
+                + Log Salary
+              </button>
+            )}
           </div>
-
-          {/* Total Income */}
-          <div
-            className="p-3.5 rounded-xl flex items-center gap-3.5"
-            style={{ background: "var(--input-bg)", border: "1px solid var(--border-subtle)" }}
-          >
-            <div className="w-10 h-10 rounded-xl flex items-center justify-center flex-shrink-0" style={{ background: "rgba(16,185,129,0.12)" }}>
-              <TrendingUp size={20} style={{ color: "#10b981" }} />
-            </div>
-            <div>
-              <p className="text-[11px] font-semibold uppercase tracking-wider" style={{ color: "var(--text-secondary)" }}>
-                Total Income Logged
-              </p>
-              <p className="text-lg font-extrabold" style={{ color: "#10b981" }}>
-                {formatETB(summary.total_income)}
-              </p>
-              <p className="text-[10px]" style={{ color: "var(--text-muted)" }}>
-                Ride: {formatETB(summary.ride_income_total)} {summary.income_by_category["Salary"] ? `· Salary: ${formatETB(summary.income_by_category["Salary"])}` : ""}
-              </p>
-            </div>
-          </div>
-
-          {/* Net Cashflow */}
-          <div
-            className="p-3.5 rounded-xl flex items-center gap-3.5"
-            style={{ background: "var(--input-bg)", border: "1px solid var(--border-subtle)" }}
-          >
-            <div
-              className="w-10 h-10 rounded-xl flex items-center justify-center flex-shrink-0"
-              style={{ background: isProfit ? "rgba(16,185,129,0.12)" : "rgba(244,63,94,0.12)" }}
-            >
-              {isProfit
-                ? <ArrowUpRight size={20} style={{ color: "#10b981" }} />
-                : <ArrowDownRight size={20} style={{ color: "#f43f5e" }} />}
-            </div>
-            <div>
-              <p className="text-[11px] font-semibold uppercase tracking-wider" style={{ color: "var(--text-secondary)" }}>
-                Monthly Net Cashflow
-              </p>
-              <p className="text-lg font-extrabold" style={{ color: isProfit ? "#10b981" : "#f43f5e" }}>
-                {isProfit ? "+" : ""}{formatETB(summary.net_cashflow)}
-              </p>
-              <p className="text-[10px]" style={{ color: "var(--text-muted)" }}>
-                Income vs Spending this month
-              </p>
-            </div>
-          </div>
-        </div>
-
-        {/* Monthly Plan Breakdown Box */}
-        <div
-          className="mt-4 p-3.5 rounded-xl text-xs flex flex-col md:flex-row md:items-center justify-between gap-3"
-          style={{ background: "rgba(124,58,237,0.06)", border: "1px dashed rgba(124,58,237,0.25)" }}
-        >
-          <div className="flex items-center gap-2 flex-wrap" style={{ color: "var(--text-secondary)" }}>
-            <span className="font-bold text-purple-400">Monthly Coverage:</span>
-            <span>Starting: <strong style={{ color: "var(--text-primary)" }}>{formatETB(summary.starting_balance)}</strong></span>
-            <span>+ Salary: <strong style={{ color: "var(--text-primary)" }}>{formatETB(summary.expected_salary)}</strong></span>
-            <span>+ Ride Needed: <strong className="text-blue-400">{formatETB(Math.max(0, summary.overall_limit - summary.starting_balance - summary.expected_salary))}</strong></span>
-            <span>= Budget: <strong style={{ color: "var(--text-primary)" }}>{formatETB(summary.overall_limit)}</strong></span>
-          </div>
-
-          {!summary.income_by_category["Salary"] && (
-            <button
-              onClick={() => {
-                setFormInitial({ type: "Income", category: "Salary", amount: summary.expected_salary });
-                setShowForm(true);
-              }}
-              className="px-3 py-1.5 rounded-lg text-xs font-bold transition-all hover:scale-105 active:scale-95 cursor-pointer flex-shrink-0"
-              style={{ background: "rgba(16,185,129,0.15)", border: "1px solid rgba(16,185,129,0.4)", color: "#10b981" }}
-            >
-              + Log Salary Received ({formatETB(summary.expected_salary)})
-            </button>
-          )}
         </div>
       </div>
 
-      {/* Planned Living Costs ceiling bar */}
+      {/* ═══════════ Budget Progress with Category Bars ═══════════ */}
       {summary.overall_limit > 0 && (
-        <div className="glass-card p-5 mb-6 fade-in">
+        <div className="glass-card p-4 sm:p-5 mb-6 fade-in">
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 mb-3">
-            <div>
+            <div className="flex items-center gap-2">
+              <Target size={16} className="text-purple-400" />
               <span className="text-sm font-bold" style={{ color: "var(--text-primary)" }}>
-                Planned Monthly Spending Plan
+                Budget Progress
               </span>
-              <p className="text-xs mt-0.5" style={{ color: "var(--text-muted)" }}>
-                Living expense limits (Rent: 35k, Food: 15k, Utilities: 3k, etc.) ·{" "}
-                <Link href="/budgets" className="text-purple-400 hover:underline">
-                  Edit in Budgets
-                </Link>
-              </p>
+              <Link href="/budgets" className="text-[10px] text-purple-400 hover:underline font-semibold">
+                Edit →
+              </Link>
             </div>
-            <span className="text-sm font-bold" style={{
+            <span className="text-xs font-bold" style={{
               color: budgetPct >= 100 ? "#f43f5e" : budgetPct >= 80 ? "#f59e0b" : "#10b981"
             }}>
-              {formatETB(summary.total_spent)} spent of {formatETB(summary.overall_limit)} planned
+              {formatETB(summary.total_spent, 0)} / {formatETB(summary.overall_limit, 0)} ({budgetPct.toFixed(0)}%)
             </span>
           </div>
-          <div className="h-3 rounded-full overflow-hidden" style={{ background: "var(--progress-track)" }}>
+
+          {/* Main progress bar */}
+          <div className="h-3 rounded-full overflow-hidden mb-4" style={{ background: "var(--progress-track)" }}>
             <div
               className="h-full rounded-full transition-all duration-700"
               style={{
@@ -373,74 +430,46 @@ export default function DashboardPage() {
               }}
             />
           </div>
+
+          {/* Category mini-bars */}
+          {topCategories.length > 0 && (
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+              {topCategories.map(([cat, spent]) => {
+                const catColors: Record<string, string> = {
+                  Rent: "#e11d48", Food: "#10b981", Transport: "#3b82f6",
+                  Utilities: "#f59e0b", Entertainment: "#a78bfa", Others: "#64748b",
+                };
+                const color = catColors[cat] || "#8b5cf6";
+                const catLimit = summary.overall_limit > 0
+                  ? (spent / summary.total_spent) * 100
+                  : 0;
+                return (
+                  <div key={cat} className="p-2.5 rounded-xl" style={{ background: "var(--input-bg)" }}>
+                    <div className="flex items-center justify-between mb-1">
+                      <span className="text-[10px] font-semibold truncate" style={{ color: "var(--text-secondary)" }}>{cat}</span>
+                      <span className="text-[10px] font-bold" style={{ color }}>{formatETB(spent, 0)}</span>
+                    </div>
+                    <div className="h-1.5 rounded-full overflow-hidden" style={{ background: "var(--progress-track)" }}>
+                      <div className="h-full rounded-full" style={{ width: `${catLimit}%`, background: color }} />
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+
           {budgetPct >= 80 && (
-            <p className="text-xs mt-2" style={{ color: budgetPct >= 100 ? "#f43f5e" : "#f59e0b" }}>
+            <p className="text-xs mt-3" style={{ color: budgetPct >= 100 ? "#f43f5e" : "#f59e0b" }}>
               {budgetPct >= 100
-                ? `⚠ Planned limits exceeded by ${formatETB(summary.total_spent - summary.overall_limit)}!`
-                : `⚠ You've reached ${budgetPct.toFixed(0)}% of your planned monthly expenses`}
+                ? `⚠ Exceeded by ${formatETB(summary.total_spent - summary.overall_limit, 0)}!`
+                : `⚠ ${budgetPct.toFixed(0)}% used — ${formatETB(summary.overall_limit - summary.total_spent, 0)} remaining`}
             </p>
           )}
         </div>
       )}
 
-      {/* Stat Cards */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-6 stagger">
-        <StatCard
-          title="Total Spent"
-          value={formatETB(summary.total_spent)}
-          subtitle="This month"
-          icon={<Banknote size={20} />}
-          accentColor="#7c3aed"
-        />
-
-        {/* Real Cash In Hand - NOT the confusing 70,000 remaining */}
-        <div className="glass-card p-5 relative overflow-hidden flex flex-col justify-between">
-          <div className="flex items-center justify-between mb-2">
-            <span className="text-xs font-semibold uppercase tracking-wider" style={{ color: "var(--text-secondary)" }}>
-              Cash In Hand
-            </span>
-            <button
-              onClick={openStartingBalanceModal}
-              title="Edit Starting Cash"
-              className="p-1 rounded-md hover:bg-black/5 dark:hover:bg-white/5 transition-colors"
-              style={{ color: "var(--text-muted)" }}
-            >
-              <Pencil size={13} />
-            </button>
-          </div>
-          <div className="text-2xl font-extrabold" style={{ color: summary.available_cash < 0 ? "#f43f5e" : "#10b981" }}>
-            {formatETB(summary.available_cash)}
-          </div>
-          <div className="flex items-center justify-between mt-2 pt-2 text-[11px]" style={{ borderTop: "1px solid var(--border-subtle)", color: "var(--text-muted)" }}>
-            <span>Started with: {formatETB(summary.starting_balance)}</span>
-            <span
-              onClick={openStartingBalanceModal}
-              className="text-purple-400 font-semibold cursor-pointer hover:underline"
-            >
-              Edit
-            </span>
-          </div>
-        </div>
-
-        <StatCard
-          title="Daily Average Spend"
-          value={formatETB(summary.daily_average)}
-          subtitle="Per day this month"
-          icon={<Calendar size={20} />}
-          accentColor="#3b82f6"
-        />
-
-        <StatCard
-          title="Top Category"
-          value={summary.top_category ?? "—"}
-          subtitle={summary.top_category ? `${formatETB(summary.top_category_amount)} spent` : "No data"}
-          icon={<Star size={20} />}
-          accentColor="#f59e0b"
-        />
-      </div>
-
-      {/* Charts */}
-      <div className="grid grid-cols-1 lg:grid-cols-5 gap-4">
+      {/* ═══════════ Charts ═══════════ */}
+      <div className="grid grid-cols-1 lg:grid-cols-5 gap-4 mb-6">
         <div className="lg:col-span-3">
           <SpendingTrendChart
             data={summary.daily_trend}
@@ -460,12 +489,14 @@ export default function DashboardPage() {
         </div>
       </div>
 
-      {/* ── Feature 1: Recent Transactions ── */}
-      <div className="mt-6 glass-card overflow-hidden fade-in">
-        <div className="flex items-center justify-between px-5 py-4" style={{ borderBottom: "1px solid var(--border-subtle)" }}>
+      {/* ═══════════ Recent Transactions ═══════════ */}
+      <div className="glass-card overflow-hidden fade-in">
+        <div className="flex items-center justify-between px-4 sm:px-5 py-4" style={{ borderBottom: "1px solid var(--border-subtle)" }}>
           <div>
             <h2 className="text-sm font-bold" style={{ color: "var(--text-primary)" }}>Recent Activity</h2>
-            <p className="text-xs mt-0.5" style={{ color: "var(--text-muted)" }}>Last 7 transactions this month</p>
+            <p className="text-[10px] sm:text-xs mt-0.5" style={{ color: "var(--text-muted)" }}>
+              Last {recentTransactions.length} transactions · {formatMonthYear(currentMonth)}
+            </p>
           </div>
           <Link
             href="/transactions"
@@ -482,7 +513,7 @@ export default function DashboardPage() {
             <p className="text-sm" style={{ color: "var(--text-muted)" }}>No transactions this month yet</p>
             <button
               onClick={openExpenseModal}
-              className="mt-3 px-4 py-2 rounded-xl text-xs font-bold shadow-md hover:opacity-90"
+              className="mt-3 px-4 py-2 rounded-xl text-xs font-bold shadow-md hover:opacity-90 cursor-pointer"
               style={{ background: "linear-gradient(135deg, #7c3aed, #3b82f6)", color: "#fff" }}
             >
               + Add First Expense
@@ -501,43 +532,69 @@ export default function DashboardPage() {
               return (
                 <div
                   key={tx.id}
-                  className="flex items-center justify-between px-5 py-3.5 transition-colors hover:bg-white/[0.02]"
+                  className="flex items-center justify-between px-4 sm:px-5 py-3 transition-colors hover:bg-white/[0.02] group"
                   style={{ borderBottom: i < recentTransactions.length - 1 ? "1px solid var(--border-subtle)" : "none" }}
                 >
-                  <div className="flex items-center gap-3">
+                  <div className="flex items-center gap-2.5 sm:gap-3 min-w-0">
                     <div
-                      className="w-9 h-9 rounded-xl flex items-center justify-center flex-shrink-0"
+                      className="w-8 h-8 sm:w-9 sm:h-9 rounded-xl flex items-center justify-center shrink-0"
                       style={{ background: `${color}18` }}
                     >
                       {isIncome
-                        ? <TrendingUp size={16} style={{ color: "#10b981" }} />
-                        : <TrendingDown size={16} style={{ color }} />
+                        ? <TrendingUp size={15} style={{ color: "#10b981" }} />
+                        : <TrendingDown size={15} style={{ color }} />
                       }
                     </div>
-                    <div>
-                      <div className="flex items-center gap-2">
-                        <span className="text-sm font-semibold" style={{ color: "var(--text-primary)" }}>
+                    <div className="min-w-0">
+                      <div className="flex items-center gap-1.5">
+                        <span className="text-sm font-semibold truncate" style={{ color: "var(--text-primary)" }}>
                           {tx.category}
                         </span>
                         {isIncome && (
-                          <span className="text-[10px] font-bold px-1.5 py-0.5 rounded" style={{ background: "rgba(16,185,129,0.12)", color: "#10b981" }}>
-                            INCOME
+                          <span className="text-[9px] font-bold px-1.5 py-0.5 rounded" style={{ background: "rgba(16,185,129,0.12)", color: "#10b981" }}>
+                            IN
                           </span>
                         )}
                       </div>
-                      <p className="text-xs mt-0.5" style={{ color: "var(--text-muted)" }}>
+                      <p className="text-[10px] sm:text-xs mt-0.5 truncate" style={{ color: "var(--text-muted)" }}>
                         {new Date(tx.date + "T00:00:00").toLocaleDateString("en-US", { month: "short", day: "numeric" })}
                         {tx.note ? ` · ${tx.note}` : ""}
-                        {" · "}{tx.payment_method}
+                        <span className="hidden sm:inline"> · {tx.payment_method}</span>
                       </p>
                     </div>
                   </div>
-                  <span
-                    className="text-sm font-extrabold"
-                    style={{ color: isIncome ? "#10b981" : "var(--text-primary)" }}
-                  >
-                    {isIncome ? "+" : "−"}{formatETB(tx.amount)}
-                  </span>
+
+                  <div className="flex items-center gap-2 shrink-0">
+                    <span
+                      className="text-sm font-extrabold"
+                      style={{ color: isIncome ? "#10b981" : "var(--text-primary)" }}
+                    >
+                      {isIncome ? "+" : "−"}{formatETB(tx.amount, 0)}
+                    </span>
+
+                    {/* Edit/Delete buttons - visible on hover */}
+                    <div className="hidden sm:flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                      <button
+                        onClick={() => {
+                          setEditingTx(tx);
+                        }}
+                        className="p-1.5 rounded-lg hover:bg-purple-500/10 transition-colors cursor-pointer"
+                        title="Edit"
+                        style={{ color: "var(--text-muted)" }}
+                      >
+                        <Pencil size={13} />
+                      </button>
+                      <button
+                        onClick={() => handleDeleteTransaction(tx.id)}
+                        disabled={deletingId === tx.id}
+                        className="p-1.5 rounded-lg hover:bg-rose-500/10 transition-colors cursor-pointer disabled:opacity-50"
+                        title="Delete"
+                        style={{ color: "var(--text-muted)" }}
+                      >
+                        <Trash2 size={13} />
+                      </button>
+                    </div>
+                  </div>
                 </div>
               );
             })}
@@ -545,7 +602,8 @@ export default function DashboardPage() {
         )}
       </div>
 
-      {/* Unified Transaction Modal */}
+      {/* ═══════════ Modals ═══════════ */}
+      {/* Add Transaction */}
       {showForm && (
         <div
           className="fixed inset-0 z-50 flex items-center justify-center p-4"
@@ -561,7 +619,31 @@ export default function DashboardPage() {
         </div>
       )}
 
-      {/* Starting Balance Modal */}
+      {/* Edit Transaction */}
+      {editingTx && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center p-4"
+          style={{ background: "var(--modal-overlay)", backdropFilter: "blur(6px)" }}
+        >
+          <div className="glass-card p-6 w-full max-w-md fade-in">
+            <ExpenseForm
+              onSubmit={handleEditTransaction}
+              onClose={() => setEditingTx(null)}
+              initial={{
+                amount: editingTx.amount,
+                type: editingTx.type,
+                category: editingTx.category,
+                date: editingTx.date,
+                payment_method: editingTx.payment_method,
+                note: editingTx.note,
+              }}
+              submitLabel="Update Transaction"
+            />
+          </div>
+        </div>
+      )}
+
+      {/* Starting Balance */}
       {showBalanceModal && (
         <div
           className="fixed inset-0 z-50 flex items-center justify-center p-4"
@@ -573,9 +655,8 @@ export default function DashboardPage() {
                 Edit Starting Balance
               </h3>
               <button
-                type="button"
                 onClick={() => setShowBalanceModal(false)}
-                className="p-1.5 rounded-lg hover:bg-black/5 dark:hover:bg-white/5 transition-colors"
+                className="p-1.5 rounded-lg hover:bg-black/5 dark:hover:bg-white/5 transition-colors cursor-pointer"
                 style={{ color: "var(--text-muted)" }}
               >
                 <X size={18} />
@@ -604,14 +685,14 @@ export default function DashboardPage() {
                   autoFocus
                 />
                 <p className="text-[11px] mt-1.5" style={{ color: "var(--text-muted)" }}>
-                  This is the money you had in your pocket/bank at the beginning of the month.
+                  Money you had at the beginning of the month.
                 </p>
               </div>
 
               <button
                 type="submit"
                 disabled={savingBalance}
-                className="w-full py-3 rounded-xl text-sm font-bold transition-all duration-200 hover:opacity-90 active:scale-[0.98] disabled:opacity-50 shadow-md cursor-pointer"
+                className="w-full py-3 rounded-xl text-sm font-bold transition-all hover:opacity-90 active:scale-[0.98] disabled:opacity-50 shadow-md cursor-pointer"
                 style={{ background: "linear-gradient(135deg, #7c3aed, #3b82f6)", color: "#fff" }}
               >
                 {savingBalance ? "Saving..." : "Save Starting Cash"}
@@ -629,11 +710,12 @@ function LoadingState() {
     <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
       <div className="animate-pulse space-y-4">
         <div className="h-8 rounded-xl w-48" style={{ background: "var(--border-subtle)" }} />
-        <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
           {[...Array(4)].map((_, i) => (
-            <div key={i} className="h-36 rounded-2xl" style={{ background: "var(--border-subtle)" }} />
+            <div key={i} className="h-28 rounded-2xl" style={{ background: "var(--border-subtle)" }} />
           ))}
         </div>
+        <div className="h-32 rounded-2xl" style={{ background: "var(--border-subtle)" }} />
         <div className="grid grid-cols-1 lg:grid-cols-5 gap-4">
           <div className="lg:col-span-3 h-72 rounded-2xl" style={{ background: "var(--border-subtle)" }} />
           <div className="lg:col-span-2 h-72 rounded-2xl" style={{ background: "var(--border-subtle)" }} />
