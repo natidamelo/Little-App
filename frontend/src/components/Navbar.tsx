@@ -34,7 +34,7 @@ export default function Navbar() {
           >
             <Zap size={14} className="text-white" />
           </div>
-          <span className="text-base sm:text-lg font-bold gradient-text hidden xs:inline sm:inline">SpendPulse</span>
+          <span className="text-base sm:text-lg font-bold gradient-text hidden sm:inline">SpendPulse</span>
         </Link>
 
         {/* Navigation links */}
