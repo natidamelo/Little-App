@@ -18,34 +18,34 @@ export default function Navbar() {
 
   return (
     <nav
-      className="fixed top-0 left-0 right-0 z-50 h-16 transition-colors duration-200"
+      className="fixed top-0 left-0 right-0 z-50 h-14 sm:h-16 transition-colors duration-200"
       style={{
         background: "var(--nav-bg)",
         backdropFilter: "blur(20px)",
         borderBottom: "1px solid var(--border-subtle)",
       }}
     >
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-full flex items-center justify-between">
+      <div className="max-w-7xl mx-auto px-3 sm:px-6 lg:px-8 h-full flex items-center justify-between gap-1">
         {/* Logo */}
-        <Link href="/" className="flex items-center gap-2 group">
+        <Link href="/" className="flex items-center gap-1.5 group flex-shrink-0">
           <div
-            className="w-8 h-8 rounded-lg flex items-center justify-center transition-transform group-hover:scale-105"
+            className="w-7 h-7 sm:w-8 sm:h-8 rounded-lg flex items-center justify-center transition-transform group-hover:scale-105"
             style={{ background: "linear-gradient(135deg, #7c3aed, #3b82f6)" }}
           >
-            <Zap size={16} className="text-white" />
+            <Zap size={14} className="text-white" />
           </div>
-          <span className="text-lg font-bold gradient-text">SpendPulse</span>
+          <span className="text-base sm:text-lg font-bold gradient-text hidden xs:inline sm:inline">SpendPulse</span>
         </Link>
 
         {/* Navigation links */}
-        <div className="flex items-center gap-1">
+        <div className="flex items-center gap-0.5 sm:gap-1">
           {navLinks.map(({ href, label, icon: Icon }) => {
             const active = pathname === href;
             return (
               <Link
                 key={href}
                 href={href}
-                className="flex items-center gap-2 px-3.5 py-2 rounded-xl text-sm font-medium transition-all duration-200"
+                className="flex items-center gap-1.5 px-2 sm:px-3.5 py-2 rounded-xl text-sm font-medium transition-all duration-200"
                 style={{
                   color: active ? "var(--accent-purple)" : "var(--text-secondary)",
                   background: active ? "rgba(124,58,237,0.12)" : "transparent",
@@ -61,7 +61,7 @@ export default function Navbar() {
         </div>
 
         {/* Right side controls: Theme Toggle + Month Badge */}
-        <div className="flex items-center gap-2 sm:gap-3">
+        <div className="flex items-center gap-1.5 sm:gap-3 flex-shrink-0">
           {/* Theme Toggle Button */}
           {mounted && (
             <button
@@ -69,7 +69,7 @@ export default function Navbar() {
               type="button"
               onClick={toggleTheme}
               title={`Switch to ${theme === "dark" ? "Normal (Light)" : "Dark"} mode`}
-              className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-semibold transition-all duration-200 hover:scale-105 active:scale-95"
+              className="flex items-center gap-1 px-2 sm:px-3 py-1.5 rounded-xl text-xs font-semibold transition-all duration-200 hover:scale-105 active:scale-95"
               style={{
                 background: "var(--input-bg)",
                 border: "1px solid var(--border-subtle)",
@@ -90,9 +90,9 @@ export default function Navbar() {
             </button>
           )}
 
-          {/* Month badge */}
+          {/* Month badge — hidden on very small screens */}
           <div
-            className="text-xs font-semibold px-3 py-1.5 rounded-full"
+            className="hidden sm:flex text-xs font-semibold px-2.5 py-1.5 rounded-full"
             style={{
               background: "rgba(59,130,246,0.1)",
               border: "1px solid rgba(59,130,246,0.2)",

@@ -180,7 +180,7 @@ export default function TransactionsPage() {
       </div>
 
       {/* ── Feature 2: Income / Expense / Net summary cards ── */}
-      <div className="grid grid-cols-3 gap-4 mb-5 stagger">
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 mb-5 stagger">
         {/* Total Expenses */}
         <div
           className="glass-card p-4 flex items-center gap-3"
@@ -364,146 +364,226 @@ export default function TransactionsPage() {
             </button>
           </div>
         ) : (
-          <div className="overflow-x-auto">
-            <table className="w-full">
-              <thead>
-                <tr style={{ borderBottom: "1px solid var(--border-subtle)" }}>
-                  {/* Sortable columns */}
-                  {(["Date", "Category", "Amount (ETB)", "Payment", "Note", "Actions"] as const).map((h) => {
-                    const key = h === "Date" ? "date" : h === "Category" ? "category" : h === "Amount (ETB)" ? "amount" : null;
-                    return (
-                      <th
-                        key={h}
-                        className="px-5 py-3.5 text-left text-xs font-semibold uppercase tracking-wider"
-                        style={{ color: "var(--text-muted)", cursor: key ? "pointer" : "default", userSelect: "none" }}
-                        onClick={() => key && toggleSort(key as SortKey)}
-                      >
-                        <span className="inline-flex items-center gap-1">
-                          {h}
-                          {key && (
-                            <ArrowUpDown
-                              size={11}
-                              style={{
-                                opacity: sortKey === key ? 1 : 0.35,
-                                color: sortKey === key ? "var(--accent-purple)" : "inherit",
-                              }}
-                            />
-                          )}
-                        </span>
-                      </th>
-                    );
-                  })}
-                </tr>
-              </thead>
-              <tbody>
-                {filtered.map((tx, i) => (
-                  <tr
-                    key={tx.id}
-                    className="transition-colors duration-150 hover:bg-black/[0.02] dark:hover:bg-white/[0.02]"
-                    style={{ borderBottom: i < filtered.length - 1 ? "1px solid var(--border-subtle)" : "none" }}
-                  >
-                    <td className="px-5 py-3.5 text-sm" style={{ color: "var(--text-secondary)" }}>
-                      {new Date(tx.date + "T00:00:00").toLocaleDateString("en-US", {
-                        month: "short", day: "numeric",
-                      })}
-                    </td>
-                    <td className="px-5 py-3.5">
-                      <div className="flex flex-col gap-1">
-                        <span
-                          className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-semibold"
-                          style={{
-                            background: `${CATEGORY_COLORS[tx.category] ?? "#64748b"}18`,
-                            color: CATEGORY_COLORS[tx.category] ?? "#64748b",
-                          }}
-                        >
-                          <span
-                            className="w-1.5 h-1.5 rounded-full flex-shrink-0"
-                            style={{ background: CATEGORY_COLORS[tx.category] ?? "#64748b" }}
-                          />
+          <>
+            {/* ── Mobile card list (< sm) ── */}
+            <div className="sm:hidden divide-y" style={{ borderColor: "var(--border-subtle)" }}>
+              {filtered.map((tx) => {
+                const isIncome = tx.type === "Income";
+                const color = CATEGORY_COLORS[tx.category] ?? "#64748b";
+                return (
+                  <div key={tx.id} className="px-4 py-3.5 flex items-center gap-3">
+                    <div
+                      className="w-9 h-9 rounded-xl flex items-center justify-center flex-shrink-0"
+                      style={{ background: `${color}18` }}
+                    >
+                      {isIncome
+                        ? <TrendingUp size={16} style={{ color: "#10b981" }} />
+                        : <TrendingDown size={16} style={{ color }} />}
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-1.5 flex-wrap">
+                        <span className="text-sm font-semibold" style={{ color: "var(--text-primary)" }}>
                           {tx.category}
                         </span>
-                        {tx.type === "Income" && (
-                          <span className="text-[10px] font-bold px-1.5 py-0.5 rounded w-fit" style={{ background: "rgba(16,185,129,0.12)", color: "#10b981" }}>
-                            ↑ INCOME
+                        {isIncome && (
+                          <span className="text-[10px] font-bold px-1.5 py-0.5 rounded" style={{ background: "rgba(16,185,129,0.12)", color: "#10b981" }}>
+                            INCOME
                           </span>
                         )}
                       </div>
-                    </td>
-                    <td className="px-5 py-3.5 text-sm font-bold" style={{ color: tx.type === "Income" ? "#10b981" : "var(--text-primary)" }}>
-                      {tx.type === "Income" ? "+" : "−"}{formatETB(tx.amount)}
-                    </td>
-                    <td className="px-5 py-3.5">
-                      <span
-                        className="text-xs font-semibold px-2.5 py-1 rounded-lg inline-flex items-center gap-1.5"
-                        style={{
-                          background: `${PM_COLORS[tx.payment_method] ?? "#64748b"}18`,
-                          border: `1px solid ${PM_COLORS[tx.payment_method] ?? "#64748b"}40`,
-                          color: PM_COLORS[tx.payment_method] ?? "#64748b",
-                        }}
-                      >
-                        <span
-                          className="w-1.5 h-1.5 rounded-full"
-                          style={{ background: PM_COLORS[tx.payment_method] ?? "#64748b" }}
-                        />
-                        {tx.payment_method}
+                      <p className="text-xs mt-0.5 truncate" style={{ color: "var(--text-muted)" }}>
+                        {new Date(tx.date + "T00:00:00").toLocaleDateString("en-US", { month: "short", day: "numeric" })}
+                        {" · "}{tx.payment_method}
+                        {tx.note ? ` · ${tx.note}` : ""}
+                      </p>
+                    </div>
+                    <div className="flex flex-col items-end gap-1.5 flex-shrink-0">
+                      <span className="text-sm font-extrabold" style={{ color: isIncome ? "#10b981" : "var(--text-primary)" }}>
+                        {isIncome ? "+" : "−"}{formatETB(tx.amount)}
                       </span>
-                    </td>
-                    <td className="px-5 py-3.5 text-sm max-w-[160px] truncate" style={{ color: "var(--text-secondary)" }}>
-                      {tx.note ?? "—"}
-                    </td>
-                    <td className="px-5 py-3.5">
-                      {/* ── Feature 5: Delete confirmation ── */}
                       {confirmDeleteId === tx.id ? (
-                        <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl" style={{ background: "rgba(244,63,94,0.08)", border: "1px solid rgba(244,63,94,0.3)" }}>
-                          <AlertTriangle size={13} style={{ color: "#f43f5e", flexShrink: 0 }} />
-                          <span className="text-[11px] font-semibold" style={{ color: "#f43f5e", whiteSpace: "nowrap" }}>
-                            Sure?
-                          </span>
+                        <div className="flex items-center gap-1">
                           <button
                             onClick={() => handleDelete(tx.id)}
                             disabled={deletingId === tx.id}
-                            className="text-[11px] font-bold px-2 py-0.5 rounded-md text-white disabled:opacity-50"
+                            className="text-[10px] font-bold px-2 py-0.5 rounded-md text-white disabled:opacity-50"
                             style={{ background: "#f43f5e" }}
                           >
                             {deletingId === tx.id ? "…" : "Yes"}
                           </button>
                           <button
                             onClick={() => setConfirmDeleteId(null)}
-                            className="text-[11px] font-semibold px-2 py-0.5 rounded-md"
+                            className="text-[10px] font-semibold px-2 py-0.5 rounded-md"
                             style={{ background: "var(--input-bg)", color: "var(--text-muted)" }}
                           >
                             No
                           </button>
                         </div>
                       ) : (
-                        <div className="flex items-center gap-2">
+                        <div className="flex items-center gap-1">
                           <button
-                            id={`edit-tx-${tx.id}`}
                             onClick={() => setEditTx(tx)}
                             className="p-1.5 rounded-lg transition-colors hover:bg-blue-500/10"
                             style={{ color: "#3b82f6" }}
-                            title="Edit transaction"
                           >
-                            <Pencil size={14} />
+                            <Pencil size={13} />
                           </button>
                           <button
-                            id={`delete-tx-${tx.id}`}
                             onClick={() => setConfirmDeleteId(tx.id)}
                             disabled={deletingId === tx.id}
                             className="p-1.5 rounded-lg transition-colors hover:bg-red-500/10 disabled:opacity-40"
                             style={{ color: "#f43f5e" }}
-                            title="Delete transaction"
                           >
-                            <Trash2 size={14} />
+                            <Trash2 size={13} />
                           </button>
                         </div>
                       )}
-                    </td>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+
+            {/* ── Desktop table (sm+) ── */}
+            <div className="hidden sm:block overflow-x-auto">
+              <table className="w-full">
+                <thead>
+                  <tr style={{ borderBottom: "1px solid var(--border-subtle)" }}>
+                    {(["Date", "Category", "Amount (ETB)", "Payment", "Note", "Actions"] as const).map((h) => {
+                      const key = h === "Date" ? "date" : h === "Category" ? "category" : h === "Amount (ETB)" ? "amount" : null;
+                      return (
+                        <th
+                          key={h}
+                          className="px-5 py-3.5 text-left text-xs font-semibold uppercase tracking-wider"
+                          style={{ color: "var(--text-muted)", cursor: key ? "pointer" : "default", userSelect: "none" }}
+                          onClick={() => key && toggleSort(key as SortKey)}
+                        >
+                          <span className="inline-flex items-center gap-1">
+                            {h}
+                            {key && (
+                              <ArrowUpDown
+                                size={11}
+                                style={{
+                                  opacity: sortKey === key ? 1 : 0.35,
+                                  color: sortKey === key ? "var(--accent-purple)" : "inherit",
+                                }}
+                              />
+                            )}
+                          </span>
+                        </th>
+                      );
+                    })}
                   </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
+                </thead>
+                <tbody>
+                  {filtered.map((tx, i) => (
+                    <tr
+                      key={tx.id}
+                      className="transition-colors duration-150 hover:bg-black/[0.02] dark:hover:bg-white/[0.02]"
+                      style={{ borderBottom: i < filtered.length - 1 ? "1px solid var(--border-subtle)" : "none" }}
+                    >
+                      <td className="px-5 py-3.5 text-sm" style={{ color: "var(--text-secondary)" }}>
+                        {new Date(tx.date + "T00:00:00").toLocaleDateString("en-US", {
+                          month: "short", day: "numeric",
+                        })}
+                      </td>
+                      <td className="px-5 py-3.5">
+                        <div className="flex flex-col gap-1">
+                          <span
+                            className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-semibold"
+                            style={{
+                              background: `${CATEGORY_COLORS[tx.category] ?? "#64748b"}18`,
+                              color: CATEGORY_COLORS[tx.category] ?? "#64748b",
+                            }}
+                          >
+                            <span
+                              className="w-1.5 h-1.5 rounded-full flex-shrink-0"
+                              style={{ background: CATEGORY_COLORS[tx.category] ?? "#64748b" }}
+                            />
+                            {tx.category}
+                          </span>
+                          {tx.type === "Income" && (
+                            <span className="text-[10px] font-bold px-1.5 py-0.5 rounded w-fit" style={{ background: "rgba(16,185,129,0.12)", color: "#10b981" }}>
+                              ↑ INCOME
+                            </span>
+                          )}
+                        </div>
+                      </td>
+                      <td className="px-5 py-3.5 text-sm font-bold" style={{ color: tx.type === "Income" ? "#10b981" : "var(--text-primary)" }}>
+                        {tx.type === "Income" ? "+" : "−"}{formatETB(tx.amount)}
+                      </td>
+                      <td className="px-5 py-3.5">
+                        <span
+                          className="text-xs font-semibold px-2.5 py-1 rounded-lg inline-flex items-center gap-1.5"
+                          style={{
+                            background: `${PM_COLORS[tx.payment_method] ?? "#64748b"}18`,
+                            border: `1px solid ${PM_COLORS[tx.payment_method] ?? "#64748b"}40`,
+                            color: PM_COLORS[tx.payment_method] ?? "#64748b",
+                          }}
+                        >
+                          <span
+                            className="w-1.5 h-1.5 rounded-full"
+                            style={{ background: PM_COLORS[tx.payment_method] ?? "#64748b" }}
+                          />
+                          {tx.payment_method}
+                        </span>
+                      </td>
+                      <td className="px-5 py-3.5 text-sm max-w-[160px] truncate" style={{ color: "var(--text-secondary)" }}>
+                        {tx.note ?? "—"}
+                      </td>
+                      <td className="px-5 py-3.5">
+                        {confirmDeleteId === tx.id ? (
+                          <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl" style={{ background: "rgba(244,63,94,0.08)", border: "1px solid rgba(244,63,94,0.3)" }}>
+                            <AlertTriangle size={13} style={{ color: "#f43f5e", flexShrink: 0 }} />
+                            <span className="text-[11px] font-semibold" style={{ color: "#f43f5e", whiteSpace: "nowrap" }}>
+                              Sure?
+                            </span>
+                            <button
+                              onClick={() => handleDelete(tx.id)}
+                              disabled={deletingId === tx.id}
+                              className="text-[11px] font-bold px-2 py-0.5 rounded-md text-white disabled:opacity-50"
+                              style={{ background: "#f43f5e" }}
+                            >
+                              {deletingId === tx.id ? "…" : "Yes"}
+                            </button>
+                            <button
+                              onClick={() => setConfirmDeleteId(null)}
+                              className="text-[11px] font-semibold px-2 py-0.5 rounded-md"
+                              style={{ background: "var(--input-bg)", color: "var(--text-muted)" }}
+                            >
+                              No
+                            </button>
+                          </div>
+                        ) : (
+                          <div className="flex items-center gap-2">
+                            <button
+                              id={`edit-tx-${tx.id}`}
+                              onClick={() => setEditTx(tx)}
+                              className="p-1.5 rounded-lg transition-colors hover:bg-blue-500/10"
+                              style={{ color: "#3b82f6" }}
+                              title="Edit transaction"
+                            >
+                              <Pencil size={14} />
+                            </button>
+                            <button
+                              id={`delete-tx-${tx.id}`}
+                              onClick={() => setConfirmDeleteId(tx.id)}
+                              disabled={deletingId === tx.id}
+                              className="p-1.5 rounded-lg transition-colors hover:bg-red-500/10 disabled:opacity-40"
+                              style={{ color: "#f43f5e" }}
+                              title="Delete transaction"
+                            >
+                              <Trash2 size={14} />
+                            </button>
+                          </div>
+                        )}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </>
         )}
       </div>
 

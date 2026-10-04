@@ -384,7 +384,7 @@ export default function DashboardPage() {
       )}
 
       {/* Stat Cards */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-6 stagger">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-6 stagger">
         <StatCard
           title="Total Spent"
           value={formatETB(summary.total_spent)}

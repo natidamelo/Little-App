@@ -8,6 +8,7 @@ export const metadata: Metadata = {
   title: "SpendPulse — Personal Budget & Expense Tracker",
   description:
     "Track daily expenses, set monthly budgets, and visualize your spending with SpendPulse — a modern personal finance dashboard.",
+  viewport: "width=device-width, initial-scale=1",
 };
 
 const themeScript = `
@@ -43,7 +44,7 @@ export default function RootLayout({
         <ThemeProvider>
           <ToastProvider>
             <Navbar />
-            <main className="pt-16">{children}</main>
+            <main className="pt-14 sm:pt-16">{children}</main>
           </ToastProvider>
         </ThemeProvider>
       </body>
