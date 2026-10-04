@@ -8,7 +8,29 @@ export const metadata: Metadata = {
   title: "SpendPulse — Personal Budget & Expense Tracker",
   description:
     "Track daily expenses, set monthly budgets, and visualize your spending with SpendPulse — a modern personal finance dashboard.",
-  viewport: "width=device-width, initial-scale=1",
+  manifest: "/manifest.json",
+  appleWebApp: {
+    capable: true,
+    statusBarStyle: "black-translucent",
+    title: "SpendPulse",
+  },
+  icons: {
+    icon: [
+      { url: "/favicon-16x16.png", sizes: "16x16", type: "image/png" },
+      { url: "/favicon-32x32.png", sizes: "32x32", type: "image/png" },
+      { url: "/icons/icon-192x192.png", sizes: "192x192", type: "image/png" },
+      { url: "/icons/icon-512x512.png", sizes: "512x512", type: "image/png" },
+    ],
+    apple: [
+      { url: "/apple-touch-icon.png", sizes: "180x180", type: "image/png" },
+    ],
+    shortcut: "/favicon-32x32.png",
+  },
+  other: {
+    "mobile-web-app-capable": "yes",
+    "msapplication-TileColor": "#7c3aed",
+    "msapplication-TileImage": "/icons/icon-144x144.png",
+  },
 };
 
 const themeScript = `
@@ -38,6 +60,8 @@ export default function RootLayout({
   return (
     <html lang="en" suppressHydrationWarning>
       <head>
+        <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1" />
+        <meta name="theme-color" content="#7c3aed" />
         <script dangerouslySetInnerHTML={{ __html: themeScript }} />
       </head>
       <body className="min-h-screen transition-colors duration-200" style={{ background: "var(--bg-primary)", color: "var(--text-primary)" }}>
